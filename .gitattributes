@@ -1,0 +1,4 @@
+# Everything here is executed on Linux and macOS. A CRLF shebang does not run:
+# `#!/bin/sh\r` is not a valid interpreter path. Checked out with LF everywhere,
+# including on Windows, where these files are authored.
+* text=auto eol=lf
