@@ -12,20 +12,27 @@
 #
 # No dependencies beyond POSIX sh, grep, find, sed. No network. No self-update.
 set -eu
+# Character classes below are locale-sensitive: without a UTF-8 locale
+# [[:alnum:]] degrades to ASCII and a Cyrillic symbol matches inside a longer
+# identifier. Verified failure, not a precaution.
+LC_ALL="${LC_ALL:-C.UTF-8}"; export LC_ALL
+
 set -f          # globbing off: an unquoted mask like *.kt would otherwise be
                 # expanded by the shell against the current directory before
                 # find ever sees it, silently limiting every scan to the root.
 
-VERSION="0.2.0"
+VERSION="0.2.1"
 CONFIG_DIR="${REDFIRST_DIR:-.redfirst}"
 ASSETS="$CONFIG_DIR/irreplaceable"
 SOURCES="$CONFIG_DIR/sources"
 MAX_SYMBOL=200          # guards the quadratic blowup on absurd input
-TMP="${TMPDIR:-/tmp}/redfirst.$$"
+TMP=""
 
 cleanup() { rm -rf "$TMP" 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
-mkdir -p "$TMP"
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/redfirst.XXXXXX") || {
+    printf 'redfirst: не удалось создать временный каталог
+' >&2; exit 2; }
 
 die()  { printf '%s\n' "redfirst: $*" >&2; exit 2; }
 warn() { printf '%s\n' "redfirst: $*" >&2; }
@@ -50,7 +57,7 @@ esc_ere() { printf '%s' "$1" | sed 's/[][\\.*^$(){}?+|]/\\&/g'; }
 # Word boundary defined explicitly rather than via grep -w, which treats
 # non-ASCII bytes as non-word characters and so matched Cyrillic identifiers
 # inside longer ones.
-bound() { printf '(^|[^A-Za-z0-9_])%s([^A-Za-z0-9_]|$)' "$1"; }
+bound() { printf '(^|[^[:alnum:]_])%s([^[:alnum:]_]|$)' "$1"; }
 
 # ── source discovery ─────────────────────────────────────────────────────────
 
@@ -67,7 +74,7 @@ source_patterns() {
     [ -f Cargo.toml ] && found="$found *.rs"
     [ -f go.mod ] && found="$found *.go"
     [ -f pom.xml ] || [ -f build.xml ] && found="$found *.java"
-    ls ./*.csproj ./*.sln >/dev/null 2>&1 && found="$found *.cs"
+    find . -maxdepth 1 \( -name '*.csproj' -o -name '*.sln' \) 2>/dev/null | grep -q . && found="$found *.cs"
     [ -f Gemfile ] && found="$found *.rb"
     [ -f composer.json ] && found="$found *.php"
     if [ -z "$(trim "$found")" ]; then
@@ -143,12 +150,12 @@ is_decl_re() {
     #   * a Go/Rust method whose RECEIVER is the type — `func (d Foo) M()`
     #   * a constructor — `public Foo(`
     #   * a member declared with the type inside its own definition block
-    printf '(%s)[[:space:]]+%s([^A-Za-z0-9_]|$)' "$DECL_KEYWORDS" "$s"
+    printf '(%s)[[:space:]]+%s([^[:alnum:]_]|$)' "$DECL_KEYWORDS" "$s"
     printf '|%s[[:space:]]*[:=][[:space:]]*(class|function|struct)' "$s"
-    printf '|(^|[^A-Za-z0-9_])(mod|package|namespace)[[:space:]]+%s([^A-Za-z0-9_]|$)' "$s"
-    printf '|(func|fn)[[:space:]]*\\([^)]*(^|[^A-Za-z0-9_])%s([^A-Za-z0-9_]|[[:space:]]|\\))' "$s"
+    printf '|(^|[^[:alnum:]_])(mod|package|namespace)[[:space:]]+%s([^[:alnum:]_]|$)' "$s"
+    printf '|(func|fn)[[:space:]]*\\([^)]*(^|[^[:alnum:]_])%s([^A-Za-z0-9_]|[[:space:]]|\\))' "$s"
     printf '|(public|private|internal|protected|open|final|abstract)[[:space:]]+%s[[:space:]]*\\(' "$s"
-    printf '|impl([[:space:]]|<)[^{]*[[:space:]]%s([^A-Za-z0-9_]|$)' "$s"
+    printf '|impl([[:space:]]|<)[^{]*[[:space:]]%s([^[:alnum:]_]|$)' "$s"
 }
 
 comment_re='^[[:space:]]*(//|#|\*|/\*|--|;;|<!--|"""|'"'''"')'
@@ -259,13 +266,24 @@ cmd_counter() {
     for term in "$@"; do
         [ -n "$term" ] || continue
         esc=$(esc_ere "$term")
-        if ! out=$(grep -rInE -- "$esc" . 2>/dev/null); then
-            status=$?
-            if [ "$status" -gt 1 ]; then
-                printf '  %-28s ОШИБКА ПОИСКА — отсутствие НЕ подтверждено\n' "$term"
-                any=2; continue
-            fi
-            out=""
+        # Status is captured directly. Inside `if ! out=$(...)`, $? is the status
+        # of the negation — always 0 — so the whole "ОШИБКА ПОИСКА" branch below
+        # was unreachable and a failed search silently confirmed absence.
+        # Verified: `if ! out=$(sh -c "exit 2"); then echo $?; fi` prints 0.
+        # -I is gone on purpose: a secret inside a binary fixture is still a secret.
+        set +e
+        out=$(grep -RnE -- "$esc" . 2>"$TMP/gerr")
+        status=$?
+        set -e
+        if [ "$status" -gt 1 ]; then
+            printf '  %-28s ОШИБКА ПОИСКА — отсутствие НЕ подтверждено\n' "$term"
+            [ -s "$TMP/gerr" ] && head -n 2 "$TMP/gerr" | sed 's/^/      /'
+            any=2; continue
+        fi
+        if [ -s "$TMP/gerr" ]; then
+            printf '  %-28s часть путей не прочитана — отсутствие НЕ подтверждено\n' "$term"
+            head -n 2 "$TMP/gerr" | sed 's/^/      /'
+            any=2; continue
         fi
         c=$(printf '%s' "$out" | grep -c . || true)
         printf '  %-28s %s\n' "$term" "$c"
@@ -301,10 +319,14 @@ valid_date() {
 cmd_due() {
     quiet=0
     [ "${1:-}" = "--quiet" ] && quiet=1
-    if [ ! -f "$ASSETS" ]; then
-        [ "$quiet" = 1 ] && exit 0
+    # --quiet silences the success line and nothing else. It used to swallow
+    # every failure mode too, so a missing or unreadable registry made the
+    # session-start hook print nothing at all — indistinguishable from "clean".
+    if [ ! -e "$ASSETS" ]; then
         die "нет $ASSETS. Запустите: redfirst init"
     fi
+    [ -f "$ASSETS" ] || die "$ASSETS не обычный файл"
+    [ -r "$ASSETS" ] || die "$ASSETS не читается"
     now=$(date +%s)
     bad=0; total=0; out="$TMP/out"; : > "$out"
 
@@ -375,7 +397,12 @@ cmd_verified() {
         cur=$(trim "$(printf '%s' "$line" | cut -d'|' -f1)")
         if [ "$found" = 0 ] && [ -n "$name" ] && [ "$cur" = "$name" ]; then
             period=$(trim "$(printf '%s' "$line" | cut -d'|' -f3)")
-            case "$period" in ''|*[!0-9]*) period=30 ;; esac
+            # Refuse rather than substitute a default. Silently writing 30 over an
+            # unparseable period erased the only evidence that the line was broken
+            # and turned a red `due` into a green one.
+            case "$period" in
+                ''|*[!0-9]*) die "период \"$period\" у актива \"$name\" не разобран — почините строку вручную" ;;
+            esac
             rest=$(printf '%s' "$line" | cut -s -d'|' -f4-)
             if [ -n "$rest" ]; then
                 printf '%s | %s | %s |%s\n' "$name" "$today" "$period" "$rest" >> "$tmp"
