@@ -21,7 +21,7 @@ set -f          # globbing off: an unquoted mask like *.kt would otherwise be
                 # expanded by the shell against the current directory before
                 # find ever sees it, silently limiting every scan to the root.
 
-VERSION="0.2.1"
+VERSION="0.3.0"
 CONFIG_DIR="${REDFIRST_DIR:-.redfirst}"
 ASSETS="$CONFIG_DIR/irreplaceable"
 SOURCES="$CONFIG_DIR/sources"
@@ -92,12 +92,20 @@ is_noise() {
     case "$1" in
         */test/*|*/tests/*|*/Test/*|*/Tests/*|*/testing/*|\
         */androidTest/*|*/androidUnitTest/*|*/commonTest/*|*/integrationTest/*|\
-        */spec/*|*/specs/*|*/__tests__/*|*/testdata/*|*/fixtures/*|\
-        *Test.*|*Tests.*|*_test.*|*_tests.*|*.test.*|*.spec.*|*Spec.*|*IT.*|\
-        */build/*|*/dist/*|*/out/*|*/target/*|*/bin/*|*/obj/*|\
+        */jvmTest/*|*/iosTest/*|*/jsTest/*|*/nativeTest/*|*/desktopTest/*|\
+        */spec/*|*/specs/*|*/__tests__/*|*/testdata/*|*/fixtures/*|*/e2e/*|\
+        */benchmarks/*|*/examples/*|\
+        *Test.*|*Tests.*|*_test.*|*_tests.*|*.test.*|*.spec.*|*Spec.*|\
+        */test_*.py|*/conftest.py|\
+        */build/*|*/dist/*|*/out/*|*/target/*|*/obj/*|\
+        */bin/Debug/*|*/bin/Release/*|\
         */node_modules/*|*/vendor/*|*/third_party/*|*/.git/*|*/.gradle/*|\
         */__pycache__/*|*/.venv/*|*/venv/*|*/.tox/*|*/coverage/*|\
         */"$CONFIG_DIR"/*) return 0 ;;
+        # `*IT.*` used to live above and swallowed AUDIT, COMMIT, EXIT, SPLIT.
+        # Integration-test suffix only counts when preceded by a lowercase letter,
+        # so PaymentIT.java is noise and AUDIT.java is not.
+        *[a-z]IT.*) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -150,12 +158,17 @@ is_decl_re() {
     #   * a Go/Rust method whose RECEIVER is the type — `func (d Foo) M()`
     #   * a constructor — `public Foo(`
     #   * a member declared with the type inside its own definition block
-    printf '(%s)[[:space:]]+%s([^[:alnum:]_]|$)' "$DECL_KEYWORDS" "$s"
-    printf '|%s[[:space:]]*[:=][[:space:]]*(class|function|struct)' "$s"
-    printf '|(^|[^[:alnum:]_])(mod|package|namespace)[[:space:]]+%s([^[:alnum:]_]|$)' "$s"
-    printf '|(func|fn)[[:space:]]*\\([^)]*(^|[^[:alnum:]_])%s([^A-Za-z0-9_]|[[:space:]]|\\))' "$s"
-    printf '|(public|private|internal|protected|open|final|abstract)[[:space:]]+%s[[:space:]]*\\(' "$s"
-    printf '|impl([[:space:]]|<)[^{]*[[:space:]]%s([^[:alnum:]_]|$)' "$s"
+    # Every keyword alternation carries a LEFT boundary. Without it the `val`
+    # inside `interval Foo(` matched, `fn` matched the tail of any identifier,
+    # and a live call landed in the declarations bucket — a false negative
+    # produced by the very mechanism meant to prevent one.
+    b='(^|[^[:alnum:]_])'
+    printf '%s(%s)[[:space:]]+%s([^[:alnum:]_]|$)' "$b" "$DECL_KEYWORDS" "$s"
+    printf '|^[[:space:]]*%s[[:space:]]*[:=][[:space:]]*(class|function|struct)' "$s"
+    printf '|%s(mod|package|namespace)[[:space:]]+%s([^[:alnum:]_]|$)' "$b" "$s"
+    printf '|%s(func|fn)[[:space:]]*\\([^)]*%s%s([^[:alnum:]_]|[[:space:]]|\\))' "$b" "$b" "$s"
+    printf '|%s(public|private|internal|protected|open|final|abstract)[[:space:]]+%s[[:space:]]*\\(' "$b" "$s"
+    printf '|%simpl([[:space:]]|<)[^{]*[[:space:]]%s([^[:alnum:]_]|$)' "$b" "$s"
 }
 
 comment_re='^[[:space:]]*(//|#|\*|/\*|--|;;|<!--|"""|'"'''"')'
@@ -229,16 +242,15 @@ cmd_samples() {
     [ $# -ge 1 ] || die 'usage: redfirst samples <pattern>'
     pattern="$1"
     file_list_or_die
-    if ! printf 'x\n' | grep -E -- "$pattern" >/dev/null 2>&1; then
-        if ! printf 'x\n' | grep -E -- "$pattern" >/dev/null 2>&1 && \
-           ! echo "" | grep -E -- "$pattern" >/dev/null 2>&1; then
-            # distinguish "no match" from "invalid regex"
-            if ! printf '' | grep -E -- "$pattern" >/dev/null 2>&1; then
-                err=$(printf '' | grep -E -- "$pattern" 2>&1 >/dev/null || true)
-                case "$err" in *[Ee]rror*|*invalid*|*Invalid*|*unmatched*) die "неверное регулярное выражение: $pattern" ;; esac
-            fi
-        fi
-    fi
+    # Validity is decided by grep's exit code, not by matching the wording of its
+    # error message. 0.2.0 pattern-matched the text, missed it on this grep, and
+    # reported a broken expression as "0 совпадений" with a clean exit —
+    # a failed check presented as a passed one.
+    set +e
+    printf '' | grep -E -- "$pattern" >/dev/null 2>&1
+    rc=$?
+    set -e
+    [ "$rc" -gt 1 ] && die "неверное регулярное выражение: $pattern"
     grep_sources "$pattern" > "$TMP/hits" 2>/dev/null || true
     count=$(grep -c . < "$TMP/hits" || true)
     printf 'redfirst samples "%s": %s совпадений\n' "$pattern" "$count"
@@ -389,7 +401,14 @@ cmd_verified() {
     [ -n "$name" ] || die 'пустое имя'
     [ -f "$ASSETS" ] || die "нет $ASSETS"
     today=$(date +%Y-%m-%d)
-    tmp="$TMP/assets"
+    # Lock, and write the replacement NEXT TO the registry rather than in $TMP:
+    # mv is atomic only within one filesystem, and $TMP is often another device,
+    # so the previous cp left a window where the file was half-written. Two
+    # concurrent runs used to lose records and append a phantom asset.
+    lock="$CONFIG_DIR/.lock"
+    mkdir "$lock" 2>/dev/null || die "другой redfirst уже правит реестр (снимите $lock, если это не так)"
+    trap 'rmdir "$lock" 2>/dev/null || true; cleanup' EXIT INT TERM
+    tmp="$ASSETS.new.$$"
     : > "$tmp"
     found=0
     while IFS= read -r raw || [ -n "$raw" ]; do
@@ -414,8 +433,8 @@ cmd_verified() {
             printf '%s\n' "$line" >> "$tmp"
         fi
     done < "$ASSETS"
-    [ "$found" = 1 ] || die "актива с именем \"$name\" в $ASSETS нет"
-    cp "$tmp" "$ASSETS"
+    [ "$found" = 1 ] || { rm -f "$tmp"; die "актива с именем \"$name\" в $ASSETS нет"; }
+    mv -f "$tmp" "$ASSETS"
     printf 'redfirst: "%s" отмечен проверенным %s.\n' "$name" "$today"
 }
 
