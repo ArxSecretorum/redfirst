@@ -21,7 +21,7 @@ set -f          # globbing off: an unquoted mask like *.kt would otherwise be
                 # expanded by the shell against the current directory before
                 # find ever sees it, silently limiting every scan to the root.
 
-VERSION="0.4.0"
+VERSION="0.4.1"
 CONFIG_DIR="${REDFIRST_DIR:-.redfirst}"
 ASSETS="$CONFIG_DIR/irreplaceable"
 SOURCES="$CONFIG_DIR/sources"
@@ -383,6 +383,14 @@ cmd_counter() {
 # 0.2.x spent nine forks per line and took tens of seconds on a long registry,
 # which is a cost people respond to by deleting the hook.
 # Sets _days to days since 1970-01-01, or returns 1 for anything unparseable.
+# Strips leading zeros without a fork and without the non-POSIX base# prefix.
+_d=0
+dec() {
+    _d=$1
+    while :; do case $_d in 0?*) _d=${_d#0} ;; *) break ;; esac; done
+    [ -n "$_d" ] || _d=0
+}
+
 _days=0
 parse_date() {
     case "$1" in
@@ -390,7 +398,13 @@ parse_date() {
         *) return 1 ;;
     esac
     y=${1%%-*}; rest=${1#*-}; mo=${rest%%-*}; d=${rest#*-}
-    y=$((10#$y)); mo=$((10#$mo)); d=$((10#$d))
+    # NOT $((10#$mo)): the base# prefix is a bash/ksh extension. On Debian and
+    # Raspberry Pi OS /bin/sh is dash, where $((10#08)) is a syntax error — so
+    # every date in August or September crashed the whole command. Verified on
+    # the target platform, not assumed.
+    dec "$y";  y=$_d
+    dec "$mo"; mo=$_d
+    dec "$d";  d=$_d
     [ "$mo" -ge 1 ] && [ "$mo" -le 12 ] || return 1
     case $mo in
         1|3|5|7|8|10|12) dim=31 ;;
@@ -468,8 +482,8 @@ cmd_due() {
         case "$period" in
             ''|*[!0-9]*) printf '  ! %s — период "%s" не число, проверка не действует\n' "$name" "$period" >> "$out"; bad=$((bad+1)); continue ;;
         esac
-        [ "$((10#$period))" -gt 0 ] 2>/dev/null || { printf '  ! %s — период должен быть больше нуля\n' "$name" >> "$out"; bad=$((bad+1)); continue; }
-        period=$((10#$period))
+        dec "$period"; [ "$_d" -gt 0 ] 2>/dev/null || { printf '  ! %s — период должен быть больше нуля\n' "$name" >> "$out"; bad=$((bad+1)); continue; }
+        period=$_d
 
         case $verified in
             [Nn][Ee][Vv][Ee][Rr]|'')
