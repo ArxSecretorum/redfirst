@@ -1,0 +1,286 @@
+#!/bin/sh
+# redfirst — deterministic checkpoints for AI-assisted development.
+#
+# Every subcommand ends in an artifact a non-reader can judge: a count, three
+# sample lines, or an overdue date. Nothing here reports "I checked, it's fine".
+#
+# No dependencies beyond POSIX sh, grep and find. No network. No self-update.
+# Short on purpose: a tool that installs a session hook must be auditable in
+# one sitting.
+set -eu
+
+VERSION="0.1.0"
+CONFIG_DIR="${REDFIRST_DIR:-.redfirst}"
+ASSETS="$CONFIG_DIR/irreplaceable"
+SOURCES="$CONFIG_DIR/sources"
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+die() { printf '%s\n' "redfirst: $*" >&2; exit 2; }
+
+# GNU and BSD date disagree on parsing; support both rather than assume Linux.
+to_epoch() {
+    date -d "$1" +%s 2>/dev/null || date -j -f "%Y-%m-%d" "$1" +%s 2>/dev/null || echo ""
+}
+
+today_epoch() { date +%s; }
+
+# Source globs: read from config if the user overrode them, else detect.
+# Detection prints what it found — a wrong guess must be visible, not silent.
+source_pattern() {
+    if [ -f "$SOURCES" ]; then
+        grep -v '^[[:space:]]*#' "$SOURCES" | grep -v '^[[:space:]]*$'
+        return
+    fi
+    [ -f build.gradle.kts ] || [ -f build.gradle ] && { echo '*.kt'; echo '*.java'; return; }
+    [ -f pyproject.toml ] || [ -f setup.py ] && { echo '*.py'; return; }
+    [ -f package.json ] && { echo '*.ts'; echo '*.tsx'; echo '*.js'; echo '*.jsx'; return; }
+    [ -f Cargo.toml ] && { echo '*.rs'; return; }
+    [ -f go.mod ] && { echo '*.go'; return; }
+    echo '*'
+}
+
+# Paths that are tests, build output or vendored code — excluded from "who calls this".
+is_noise() {
+    case "$1" in
+        */test/*|*/tests/*|*Test.*|*_test.*|*.test.*|*.spec.*|\
+        */build/*|*/dist/*|*/target/*|*/node_modules/*|*/.git/*|\
+        */vendor/*|*/__pycache__/*|*/.venv/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# grep across source files, honouring the detected patterns.
+# $2 = "word" restricts to whole-identifier matches. Without it, `wired Foo`
+# counts every hit inside `FooBar` and reports a dead symbol as alive — a false
+# negative in the one direction this tool must never fail.
+scan() {
+    needle="$1"
+    word_flag=""
+    [ "${2:-}" = "word" ] && word_flag="-w"
+    for pat in $(source_pattern); do
+        find . -type f -name "$pat" 2>/dev/null | while read -r f; do
+            is_noise "$f" && continue
+            # shellcheck disable=SC2086
+            grep $word_flag -Hn -- "$needle" "$f" 2>/dev/null || true
+        done
+    done
+}
+
+require_config() {
+    [ -d "$CONFIG_DIR" ] || die "not initialised here. Run: redfirst init"
+}
+
+# ── due: which irreplaceable assets are overdue for a restore test ───────────
+# The failure this exists for: a risk written down in four documents over five
+# days and executed in none of them. Printing beats remembering.
+
+cmd_due() {
+    [ -f "$ASSETS" ] || { [ "${1:-}" = "--quiet" ] && exit 0; die "no $ASSETS. Run: redfirst init"; }
+    now=$(today_epoch)
+    overdue=0
+    total=0
+    while IFS='|' read -r name verified period; do
+        case "$name" in ''|\#*) continue ;; esac
+        name=$(printf '%s' "$name" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        verified=$(printf '%s' "${verified:-}" | tr -d '[:space:]')
+        period=$(printf '%s' "${period:-}" | tr -d '[:space:]')
+        [ -n "$name" ] || continue
+        total=$((total + 1))
+        [ -n "$period" ] || period=30
+
+        if [ -z "$verified" ] || [ "$verified" = "never" ]; then
+            printf '  ! %s — восстановление НИ РАЗУ не проверялось\n' "$name"
+            overdue=$((overdue + 1))
+            continue
+        fi
+        vep=$(to_epoch "$verified")
+        [ -n "$vep" ] || { printf '  ? %s — не разобрана дата "%s"\n' "$name" "$verified"; continue; }
+        age=$(( (now - vep) / 86400 ))
+        if [ "$age" -gt "$period" ]; then
+            printf '  ! %s — проверено %s дн. назад, норма %s\n' "$name" "$age" "$period"
+            overdue=$((overdue + 1))
+        fi
+    done < "$ASSETS"
+
+    if [ "$overdue" -gt 0 ]; then
+        printf 'redfirst: %s из %s невосстановимых активов просрочено.\n' "$overdue" "$total"
+        printf 'Копия, из которой ни разу не восстанавливали, — не копия.\n'
+        printf 'Отметить после проверки: redfirst verified "<имя>"\n'
+        exit 1
+    fi
+    [ "${1:-}" = "--quiet" ] || printf 'redfirst: все %s активов проверены в срок.\n' "$total"
+}
+
+# ── verified: stamp today's date against an asset ────────────────────────────
+
+cmd_verified() {
+    [ $# -ge 1 ] || die 'usage: redfirst verified "<name>"'
+    require_config
+    [ -f "$ASSETS" ] || die "no $ASSETS"
+    name="$1"
+    today=$(date +%Y-%m-%d)
+    tmp="$ASSETS.tmp.$$"
+    found=0
+    while IFS= read -r line; do
+        current=$(printf '%s' "$line" | cut -d'|' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        if [ "$current" = "$name" ]; then
+            period=$(printf '%s' "$line" | cut -d'|' -f3 | tr -d '[:space:]')
+            [ -n "$period" ] || period=30
+            printf '%s | %s | %s\n' "$name" "$today" "$period" >> "$tmp"
+            found=1
+        else
+            printf '%s\n' "$line" >> "$tmp"
+        fi
+    done < "$ASSETS"
+    [ "$found" = 1 ] || { rm -f "$tmp"; die "no asset named \"$name\" in $ASSETS"; }
+    mv "$tmp" "$ASSETS"
+    printf 'redfirst: "%s" отмечен проверенным %s.\n' "$name" "$today"
+}
+
+# ── wired: how many non-test callers does this symbol have ───────────────────
+# The failure this exists for: 287 lines with six green tests and zero callers,
+# counted as coverage for six weeks. Tests prove nothing about being connected.
+
+cmd_wired() {
+    [ $# -ge 1 ] || die 'usage: redfirst wired <Symbol>'
+    symbol="$1"
+    hits=$(scan "$symbol" word | grep -v "^\./$CONFIG_DIR/" || true)
+
+    # A declaration is not a caller. Counting `class Foo(` as a reference to Foo
+    # is how this check reports 1 for a module nobody uses — the exact false
+    # negative it exists to prevent. Declarations are separated out, not counted.
+    decl_re="(class|object|interface|enum|trait|struct|record|def|fun|func|fn|type|impl)[[:space:]]+$symbol"
+    decls=$(printf '%s\n' "$hits" | grep -E -- "$decl_re" || true)
+    callers=$(printf '%s\n' "$hits" | grep -E -v -- "$decl_re" || true)
+
+    count=$(printf '%s' "$callers" | grep -c . || true)
+    dcount=$(printf '%s' "$decls" | grep -c . || true)
+
+    printf 'redfirst wired "%s": %s ссылок вне тестов и вне объявления\n' "$symbol" "$count"
+    if [ "$dcount" != "0" ]; then
+        printf 'Объявлено здесь:\n'
+        printf '%s\n' "$decls" | sed 's/^/  /'
+    fi
+    if [ "$count" = "0" ]; then
+        printf 'Ноль. Этой вещи нет в работающей системе, сколько бы тестов её ни покрывало.\n'
+        exit 1
+    fi
+    printf 'Вызывается:\n'
+    printf '%s\n' "$callers" | head -n 10 | sed 's/^/  /'
+    [ "$count" -gt 10 ] && printf '  … и ещё %s\n' "$((count - 10))"
+    exit 0
+}
+
+# ── samples: a number is never reported without three lines it counted ───────
+# The failure this exists for: a grep for "Thread(" that also matched
+# "Thread.currentThread()" — 26 reported, 10 real, a conclusion built on both.
+
+cmd_samples() {
+    [ $# -ge 1 ] || die 'usage: redfirst samples <pattern>'
+    pattern="$1"
+    hits=$(scan "$pattern" || true)
+    count=$(printf '%s' "$hits" | grep -c . || true)
+    printf 'redfirst samples "%s": %s совпадений\n' "$pattern" "$count"
+    [ "$count" = "0" ] && exit 1
+    # Deliberately first / middle / last, not the first three. The miscount this
+    # command exists for hid in the tail of the result set: three consecutive
+    # lines from the top looked correct and would have confirmed the error.
+    printf 'Образцы из начала, середины и конца — сверьте, что посчитано именно то:\n'
+    if [ "$count" -le 3 ]; then
+        printf '%s\n' "$hits" | sed 's/^/  /'
+    else
+        mid=$(( (count + 1) / 2 ))
+        printf '%s\n' "$hits" | sed -n "1p;${mid}p;${count}p" | sed 's/^/  /'
+    fi
+    exit 0
+}
+
+# ── counter: search for the thing you are about to say does not exist ────────
+# The failure this exists for: "there is no secret filtering here" published to
+# a stranger's repository, while the filter sat in a file the first search had
+# already listed.
+
+cmd_counter() {
+    [ $# -ge 1 ] || die 'usage: redfirst counter <term> [term...]'
+    printf 'redfirst counter: ищу то, чего якобы нет.\n'
+    any=0
+    for term in "$@"; do
+        hits=$(scan "$term" || true)
+        count=$(printf '%s' "$hits" | grep -c . || true)
+        printf '  %-28s %s\n' "$term" "$count"
+        if [ "$count" != "0" ]; then
+            any=1
+            printf '%s\n' "$hits" | head -n 2 | sed 's/^/      /'
+        fi
+    done
+    if [ "$any" = 1 ]; then
+        printf 'Найдено. Утверждение об отсутствии в этой формулировке неверно.\n'
+        exit 1
+    fi
+    printf 'Не найдено. Отсутствие подтверждено этим поиском — приложите его к утверждению.\n'
+    exit 0
+}
+
+# ── init ─────────────────────────────────────────────────────────────────────
+
+cmd_init() {
+    mkdir -p "$CONFIG_DIR"
+    printf 'redfirst %s\n\n' "$VERSION"
+    printf 'Определён тип проекта. Маски исходников:\n'
+    for pat in $(source_pattern); do printf '  %s\n' "$pat"; done
+    printf 'Не то? Перечислите свои в %s, по одной на строку.\n\n' "$SOURCES"
+
+    if [ -f "$ASSETS" ]; then
+        printf '%s уже существует — оставляю как есть.\n' "$ASSETS"
+    else
+        printf 'Ищу кандидатов в невосстановимые активы…\n'
+        found=$(find . "$HOME/.android" "$HOME/.ssh" -maxdepth 4 \
+            \( -name '*.jks' -o -name '*.keystore' -o -name '*.p12' -o -name '*.pfx' \
+               -o -name '*.pem' -o -name 'id_rsa' -o -name 'id_ed25519' \
+               -o -name '*keystore.properties' \) 2>/dev/null | head -n 20 || true)
+        if [ -n "$found" ]; then
+            printf '%s\n' "$found" | sed 's/^/  /'
+        else
+            printf '  ничего очевидного не нашлось.\n'
+        fi
+        printf '\nЭто только подсказка. Незаменим не тот файл, который редкий,\n'
+        printf 'а тот, потеря которого останавливает продукт, — включая то,\n'
+        printf 'что лежит на сервере и сюда не попало.\n\n'
+        cp "$(dirname "$0")/../templates/irreplaceable" "$ASSETS" 2>/dev/null \
+            || printf '# имя | дата последней проверки ВОССТАНОВЛЕНИЯ | период, дней\n' > "$ASSETS"
+        printf 'Создан %s — впишите свои активы (имена, без путей).\n' "$ASSETS"
+    fi
+    printf '\nДальше: подключите хук старта сессии, см. install.sh\n'
+}
+
+# ── dispatch ─────────────────────────────────────────────────────────────────
+
+usage() {
+    cat <<'EOF'
+redfirst — детерминированные точки останова для разработки с ИИ.
+
+  redfirst init                 определить проект, создать конфиг
+  redfirst due [--quiet]        просроченные проверки восстановления
+  redfirst verified "<имя>"     отметить актив проверенным сегодня
+  redfirst wired <Symbol>       сколько ссылок вне тестов (0 = мёртвый код)
+  redfirst samples <pattern>    число + три образца того, что посчитано
+  redfirst counter <term...>    поиск того, чего якобы нет
+
+Каждая команда возвращает ненулевой код, когда есть на что смотреть.
+EOF
+}
+
+[ $# -ge 1 ] || { usage; exit 0; }
+cmd="$1"; shift
+case "$cmd" in
+    init)     cmd_init "$@" ;;
+    due)      cmd_due "$@" ;;
+    verified) cmd_verified "$@" ;;
+    wired)    cmd_wired "$@" ;;
+    samples)  cmd_samples "$@" ;;
+    counter)  cmd_counter "$@" ;;
+    -h|--help|help) usage ;;
+    -v|--version)   printf 'redfirst %s\n' "$VERSION" ;;
+    *) die "unknown command: $cmd" ;;
+esac
