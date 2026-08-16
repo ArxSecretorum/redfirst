@@ -1,0 +1,267 @@
+#!/bin/sh
+# Regression suite for redfirst. POSIX sh, no dependencies — the tool promises
+# none, so its tests may not require any either.
+#
+# What matters here is not pass/fail but DIRECTION. A `red` case asserts the
+# tool raises the alarm; failing one means the tool missed a defect, which is
+# the only class of failure that is actually dangerous. A `green` case asserts
+# it stays quiet; failing one is noise — annoying, never harmful. They are
+# counted separately, because "3 failed" tells you nothing and "1 blocker,
+# 2 noise" tells you everything.
+set -u
+
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH= cd -- "$HERE/.." && pwd)
+TOOL="$ROOT/bin/redfirst"
+CASES="$HERE/cases"
+FIXTURES="$HERE/fixtures"
+UNIT="$HERE/unit"
+
+[ -f "$TOOL" ] || { echo "не найден $TOOL" >&2; exit 3; }
+
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/rf-tests.XXXXXX") || exit 3
+trap 'rm -rf "$WORK"' EXIT INT TERM
+
+# Shells under test. dash is the target platform's /bin/sh; a bug invisible in
+# bash killed `due` on every August date before this file existed.
+if [ -n "${SHELLS:-}" ]; then
+    :
+else
+SHELLS=""
+for sh_candidate in dash bash; do
+    command -v "$sh_candidate" >/dev/null 2>&1 && SHELLS="$SHELLS $sh_candidate"
+done
+[ -n "$SHELLS" ] && SHELLS=${SHELLS# } || SHELLS="sh"
+fi
+case " $SHELLS " in
+    *" dash "*) ;;
+    *) printf 'ПРЕДУПРЕЖДЕНИЕ: dash не установлен, переносимость не проверяется\n' >&2 ;;
+esac
+
+blockers=0; noise=0; diffs=0; passed=0; total=0
+blocker_list=""; noise_list=""; diff_list=""
+
+note() { printf '%s\n' "$*"; }
+
+# ── fixture preparation ──────────────────────────────────────────────────────
+# `-` empty project, `@name` a copy from fixtures/, `reg:LINE\nLINE` a registry.
+prepare() {
+    spec="$1"; dest="$2"
+    mkdir -p "$dest"
+    case "$spec" in
+        -|'') : ;;
+        @*)   src="$FIXTURES/${spec#@}"
+              [ -d "$src" ] || { echo "нет стенда $src" >&2; return 1; }
+              cp -R "$src/." "$dest/" 2>/dev/null || return 1 ;;
+        reg:*)
+              mkdir -p "$dest/.redfirst"
+              printf '%b\n' "${spec#reg:}" > "$dest/.redfirst/irreplaceable" ;;
+        *)    echo "неизвестный вид стенда: $spec" >&2; return 1 ;;
+    esac
+}
+
+# ── one case in one shell ────────────────────────────────────────────────────
+# Prints "ok" or a human-readable reason.
+# Read-only commands share one prepared copy of each fixture instead of getting
+# their own: copying the tree per case was the bulk of the runtime, and
+# wired/samples/counter never write anything.
+readonly_cmd() {
+    case "$1" in
+        wired*|samples*|counter*|--version*|NOARGS) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+shared_box() {
+    _key=$(printf '%s' "$1" | tr -c 'A-Za-z0-9' '_')
+    _box="$WORK/shared.$_key"
+    [ -d "$_box" ] && { printf '%s' "$_box"; return 0; }
+    mkdir -p "$_box"
+    prepare "$1" "$_box" >/dev/null 2>&1 || { rm -rf "$_box"; return 1; }
+    printf '%s' "$_box"
+}
+
+run_one() {
+    _sh="$1"; _dir="$2"; _code="$3"; _needle="$4"; _fixture="$5"; _cmd="$6"
+    if readonly_cmd "$_cmd"; then
+        box=$(shared_box "$_fixture") || { printf 'стенд не собрался'; return 1; }
+    else
+        box="$WORK/box.$$"
+        rm -rf "$box"; mkdir -p "$box"
+        prepare "$_fixture" "$box" || { printf 'стенд не собрался'; return 1; }
+    fi
+
+    # Streams are captured separately. Merging them hid the single property the
+    # hook depends on: `due --quiet` must write to STDERR, because a SessionStart
+    # hook shows stdout only on exit 0 and stderr only on any other code. With
+    # 2>&1 the suite could not tell a working hook from a silent one.
+    _o="$WORK/o.$$"; _e="$WORK/e.$$"
+    if [ "$_cmd" = "NOARGS" ]; then
+        ( cd "$box" && "$_sh" "$TOOL" ) >"$_o" 2>"$_e"
+    else
+        ( cd "$box" && eval "$_sh \"\$TOOL\" $_cmd" ) >"$_o" 2>"$_e"
+    fi
+    rc=$?
+    out=$(cat "$_o" "$_e" 2>/dev/null)
+
+    if [ "$_code" != "*" ] && [ "$rc" != "$_code" ]; then
+        printf 'код %s, ожидался %s' "$rc" "$_code"; return 1
+    fi
+    # `err:` и `out:` требуют конкретного потока, `!` — отсутствия.
+    case "$_needle" in
+        -|'') : ;;
+        err:*) if ! grep -qF -- "${_needle#err:}" "$_e" 2>/dev/null; then
+                   printf 'нет «%s» в STDERR (там: %s)' "${_needle#err:}" \
+                          "$(head -c 60 "$_e" 2>/dev/null | tr '\n' ' ')"; return 1
+               fi ;;
+        out:*) if ! grep -qF -- "${_needle#out:}" "$_o" 2>/dev/null; then
+                   printf 'нет «%s» в STDOUT' "${_needle#out:}"; return 1
+               fi ;;
+        !*)   if printf '%s' "$out" | grep -qF -- "${_needle#!}"; then
+                  printf 'нашлось запрещённое «%s»' "${_needle#!}"; return 1
+              fi ;;
+        *)    if ! printf '%s' "$out" | grep -qF -- "$_needle"; then
+                  printf 'нет строки «%s»' "$_needle"; return 1
+              fi ;;
+    esac
+    printf 'ok'
+}
+
+# Splitting with cut+sed cost twelve forks per line and twenty seconds per run
+# on sixty lines — the same defect the tool itself had in `due`, reproduced in
+# its test harness. Parameter expansion does it with none.
+trim_var() {
+    _t=$1
+    while :; do case $_t in [\ \	]*) _t=${_t#?} ;; *) break ;; esac; done
+    while :; do case $_t in *[\ \	]) _t=${_t%?} ;; *) break ;; esac; done
+    printf '%s' "$_t"
+}
+
+split_fields() {
+    _rest=$1
+    for _name in id dir code needle fixture cmd; do
+        case $_rest in
+            *~*) _val=${_rest%%~*}; _rest=${_rest#*~} ;;
+            *)   _val=$_rest;       _rest="" ;;
+        esac
+        eval "$_name=\$(trim_var \"\$_val\")"
+    done
+}
+
+# ── table cases ──────────────────────────────────────────────────────────────
+run_table() {
+    for file in "$CASES"/*.cases; do
+        [ -f "$file" ] || continue
+        while IFS= read -r line || [ -n "$line" ]; do
+            case $line in ''|\#*) continue ;; esac
+            split_fields "$line"
+            [ -n "$id" ] && [ -n "$cmd" ] || continue
+            case "$id" in ${ONLY:-*}) ;; *) continue ;; esac
+
+            first=""; verdicts=""
+            for one in $SHELLS; do
+                total=$((total + 1))
+                why=$(run_one "$one" "$dir" "$code" "$needle" "$fixture" "$cmd")
+                if [ "$why" = "ok" ]; then
+                    passed=$((passed + 1))
+                elif [ "$dir" = "red" ]; then
+                    blockers=$((blockers + 1))
+                    blocker_list="$blocker_list
+  $id ($one): $why"
+                else
+                    noise=$((noise + 1))
+                    noise_list="$noise_list
+  $id ($one): $why"
+                fi
+                verdicts="$verdicts $one=$why"
+                [ -z "$first" ] && first="$why"
+                if [ "$why" != "$first" ]; then
+                    diffs=$((diffs + 1))
+                    diff_list="$diff_list
+  $id: оболочки разошлись —$verdicts"
+                fi
+            done
+        done < "$file"
+    done
+}
+
+# ── unit tests ───────────────────────────────────────────────────────────────
+run_unit() {
+    for file in "$UNIT"/*.sh; do
+        [ -f "$file" ] || continue
+        name=$(basename "$file" .sh)
+        for one in $SHELLS; do
+            total=$((total + 1))
+            if out=$(REDFIRST_LIB=1 TOOL="$TOOL" "$one" "$file" 2>&1); then
+                passed=$((passed + 1))
+            else
+                blockers=$((blockers + 1))
+                blocker_list="$blocker_list
+  unit/$name ($one): $(printf '%s' "$out" | head -n 3 | tr '\n' ' ')"
+            fi
+        done
+    done
+}
+
+# ── self-check ───────────────────────────────────────────────────────────────
+# Breaks the tool on purpose and demands the suite notices. A suite that stays
+# green on a broken tool proves nothing.
+self_check() {
+    note 'redfirst tests: самопроверка — ломаю инструмент и жду красного'
+    note ''
+    bad=0
+    for pair in 'dates:due-*date*' 'noise:wired-only-in-test' \
+                'decl:wired-dead-*' 'quiet:due-quiet-*'; do
+        point=${pair%%:*}; pattern=${pair#*:}
+        out=$(REDFIRST_SELFTEST=1 REDFIRST_BREAK="$point" ONLY="$pattern" \
+              SHELLS=dash "$0" --plain 2>&1)
+        got=$(printf '%s' "$out" | sed -n 's/^BLOCKERS=//p')
+        [ -n "$got" ] || got=0
+        if [ "$got" -gt 0 ]; then
+            printf '  %-6s сломан → %s покраснели (%s блокеров)  ok\n' "$point" "$pattern" "$got"
+        else
+            printf '  %-6s сломан → %s ОСТАЛИСЬ ЗЕЛЁНЫМИ  ПРОВАЛ\n' "$point" "$pattern"
+            bad=$((bad + 1))
+        fi
+    done
+    note ''
+    if [ "$bad" -gt 0 ]; then
+        note "Самопроверка провалена по $bad из 4 точек. Набору доверять нельзя."
+        exit 3
+    fi
+    note 'Самопроверка пройдена: набор ловит поломку по каждой из четырёх точек.'
+    exit 0
+}
+
+case "${1:-}" in
+    --self-check) self_check ;;
+    --plain)      PLAIN=1 ;;
+    '')           PLAIN=0 ;;
+    *)            echo "usage: run [--self-check]" >&2; exit 3 ;;
+esac
+
+run_table
+[ -z "${ONLY:-}" ] && run_unit
+
+if [ "${PLAIN:-0}" = "1" ]; then
+    printf 'BLOCKERS=%s\n' "$blockers"
+    exit 0
+fi
+
+shell_count=$(printf '%s' "$SHELLS" | wc -w | tr -d ' ')
+note ""
+note "redfirst tests: оболочки:$SHELLS"
+note ""
+printf '  БЛОКЕРЫ (инструмент прозевал дефект)   %s\n' "$blockers"
+printf '  ШУМ (заругался зря)                    %s\n' "$noise"
+printf '  РАСХОЖДЕНИЯ ОБОЛОЧЕК                   %s\n' "$diffs"
+printf '  пройдено                               %s из %s\n' "$passed" "$total"
+[ -n "$blocker_list" ] && { note ""; note "БЛОКЕРЫ:$blocker_list"; }
+[ -n "$noise_list" ]   && { note ""; note "ШУМ:$noise_list"; }
+[ -n "$diff_list" ]    && { note ""; note "РАСХОЖДЕНИЯ:$diff_list"; }
+note ""
+
+[ "$blockers" -gt 0 ] || [ "$diffs" -gt 0 ] && exit 2
+[ "$noise" -gt 0 ] && exit 1
+note "Чисто. Прогоните ещё $0 --self-check — набор без самопроверки ничего не доказывает."
+exit 0

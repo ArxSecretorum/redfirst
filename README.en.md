@@ -144,6 +144,31 @@ that way:
 Read `bin/redfirst` before installing. That is not a formality: short and
 auditable is the only honest basis of trust for a tool like this.
 
+## Regression suite
+
+```sh
+sh tests/run              # 128 cases across dash and bash
+sh tests/run --self-check # breaks the tool on purpose, demands the suite notices
+```
+
+Built around the fact that not all failures are equal. Every case declares a
+direction: `red` means the tool **must** raise the alarm, `green` means it must
+stay quiet. A failing `red` case means the tool missed a defect and counts as a
+**blocker**; a failing `green` case means it complained for nothing and counts
+as noise. They are reported separately, because "3 failed" tells you nothing
+and "1 blocker, 2 noise" tells you everything.
+
+Everything runs in two shells, and a divergence between them is its own failure
+class: the bashism `$((10#08))` was invisible under bash and killed `due` on
+every August date, and `/bin/sh` on Debian and Raspberry Pi OS is dash.
+
+`--self-check` deliberately breaks the tool at four points and requires the
+suite to go red. A suite that cannot be shown failing proves nothing — the same
+"green proves nothing" this tool exists to fight, one level up.
+
+Each case carries the date and the defect it pins, so `tests/cases/` doubles as
+an incident log. Details in `tests/SPEC.md`.
+
 ## Provenance
 
 These checks were not invented at a desk. Each grew out of a recorded failure in

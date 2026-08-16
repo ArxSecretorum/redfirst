@@ -34,6 +34,15 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/redfirst.XXXXXX") || {
     printf 'redfirst: не удалось создать временный каталог
 ' >&2; exit 2; }
 
+# Deliberate defects, for the regression suite's self-check. A suite that
+# cannot be shown to go red proves nothing - the same "green proves nothing"
+# this tool exists to fight, one level up. Guarded twice so it cannot fire
+# in production.
+_broken() {
+    [ "${REDFIRST_SELFTEST:-}" = "1" ] || return 1
+    [ "${REDFIRST_BREAK:-}" = "$1" ]
+}
+
 die()  { printf '%s\n' "redfirst: $*" >&2; exit 2; }
 warn() { printf '%s\n' "redfirst: $*" >&2; }
 
@@ -89,6 +98,7 @@ source_patterns() {
 # 0.1.0 missed androidTest/, Tests/, *Tests.*, *Spec.* — a caller living only in
 # an Android instrumentation test counted as production use.
 is_noise() {
+    _broken noise && return 1
     case "$1" in
         */test/*|*/tests/*|*/Test/*|*/Tests/*|*/testing/*|\
         */androidTest/*|*/androidUnitTest/*|*/commonTest/*|*/integrationTest/*|\
@@ -217,7 +227,9 @@ cmd_wired() {
     # Regexes travel through the environment: awk -v processes escape sequences
     # and would eat the backslash that makes `auth.login` a literal dot.
     cut -d: -f1 "$TMP/hits" | sort -u > "$TMP/hitfiles"
-    RF_SYM="$re" RF_DECL="$(is_decl_re "$esc")" RF_IMP="$import_re" \
+    _rf_decl=$(is_decl_re "$esc")
+    _broken decl && _rf_decl='$^'
+    RF_SYM="$re" RF_DECL="$_rf_decl" RF_IMP="$import_re" \
     awk '
     function strip_strings(s,   out,i,c,q,esc2) {
         out=""; q=""; esc2=0
@@ -393,6 +405,7 @@ dec() {
 
 _days=0
 parse_date() {
+    if _broken dates; then _days=0; return 0; fi
     case "$1" in
         [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
         *) return 1 ;;
@@ -468,7 +481,16 @@ cmd_due() {
         line=$raw
         if [ "$first" = 1 ]; then line=${line#"$BOM"}; first=0; fi
         case $line in
-            ''|[[:space:]]*\#*|\#*) continue ;;
+            '') continue ;;
+        esac
+        # Leading whitespace is stripped BEFORE the comment test. The glob
+        # `[[:space:]]*\#*` reads as "one space, anything, a hash, anything",
+        # so " Ключ подписи #1 | never | 90" was silently dropped as a comment
+        # — an indented asset with a hash in its name vanished from the count.
+        stripped=$line
+        while :; do case $stripped in [[:space:]]*) stripped=${stripped#?} ;; *) break ;; esac; done
+        case $stripped in
+            ''|\#*) continue ;;
         esac
         case $line in *[![:space:]]*) ;; *) continue ;; esac
         total=$((total + 1))
@@ -502,16 +524,29 @@ cmd_due() {
         fi
     done < "$TMP/assets.norm"
 
+    # Where this prints decides whether the tool works at all. A SessionStart
+    # hook shows stdout only when it exits 0, and stderr only when it does not.
+    # 0.4.x printed to stdout and exited 1 — the single automatic guarantee of
+    # the product reached nobody, ever. In hook mode everything goes to stderr
+    # with a non-zero exit, which is the combination the harness surfaces.
+    say() {
+        if _broken quiet; then printf '%s\n' "$1"; return; fi
+        if [ "$quiet" = 1 ]; then printf '%s\n' "$1" >&2; else printf '%s\n' "$1"; fi
+    }
+
     if [ "$total" = "0" ]; then
-        [ "$quiet" = 1 ] && exit 0
-        printf 'redfirst: список активов пуст. Хук будет молчать, и молчать он будет зря.\n'
+        # An empty registry is the state right after installation, and silence
+        # here is indistinguishable from "everything checked".
+        say 'redfirst: список невосстановимых активов пуст — впишите свои в .redfirst/irreplaceable.'
         exit 1
     fi
     if [ "$bad" -gt 0 ]; then
-        cat "$out"
-        printf 'redfirst: %s из %s невосстановимых активов требует внимания.\n' "$bad" "$total"
-        printf 'Копия, из которой ни разу не восстанавливали, — не копия.\n'
-        printf 'Отметить после проверки: redfirst verified "<имя>"\n'
+        if _broken quiet; then cat "$out"
+        elif [ "$quiet" = 1 ]; then cat "$out" >&2
+        else cat "$out"; fi
+        say "redfirst: $bad из $total невосстановимых активов требует внимания."
+        say 'Копия, из которой ни разу не восстанавливали, — не копия.'
+        say 'Отметить после проверки: redfirst verified "<имя>"'
         exit 1
     fi
     [ "$quiet" = 1 ] || printf 'redfirst: все %s активов проверены в срок.\n' "$total"
@@ -532,7 +567,12 @@ cmd_verified() {
     # concurrent runs used to lose records and append a phantom asset.
     lock="$CONFIG_DIR/.lock"
     mkdir "$lock" 2>/dev/null || die "другой redfirst уже правит реестр (снимите $lock, если это не так)"
-    trap 'rmdir "$lock" 2>/dev/null || true; cleanup' EXIT INT TERM
+    trap 'rmdir "$lock" 2>/dev/null || true; rm -f "$ASSETS".new.* 2>/dev/null || true; cleanup' EXIT INT TERM
+    # Normalise here, in THIS process. 0.4.0 pointed this loop at a file that
+    # only `due` creates, in `due`'s own temp directory, so `verified` failed on
+    # every invocation, in every shell, while `due` kept advertising it in each
+    # report. Caused by a global sed that matched both read loops at once.
+    tr '\r' '\n' < "$ASSETS" > "$TMP/verify.norm"
     tmp="$ASSETS.new.$$"
     : > "$tmp"
     found=0
@@ -557,7 +597,7 @@ cmd_verified() {
         else
             printf '%s\n' "$line" >> "$tmp"
         fi
-    done < "$TMP/assets.norm"
+    done < "$TMP/verify.norm"
     [ "$found" = 1 ] || { rm -f "$tmp"; die "актива с именем \"$name\" в $ASSETS нет"; }
     mv -f "$tmp" "$ASSETS"
     printf 'redfirst: "%s" отмечен проверенным %s.\n' "$name" "$today"
@@ -604,6 +644,10 @@ redfirst — детерминированные точки останова дл
 Код 2 никогда не означает «всё в порядке».
 EOF
 }
+
+# Sourced as a library by the unit tests, which need parse_date, split3 and
+# is_noise directly; a dispatcher that fires on source makes that impossible.
+[ "${REDFIRST_LIB:-}" = "1" ] && return 0 2>/dev/null
 
 [ $# -ge 1 ] || { usage; exit 0; }
 cmd="$1"; shift

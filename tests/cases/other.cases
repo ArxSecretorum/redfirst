@@ -1,0 +1,31 @@
+# samples, counter, verified, init — остальные команды.
+# id ~ напр ~ код ~ подстрока ~ стенд ~ команда ~ происхождение
+
+# ── samples: число обязано приходить с образцами того, что посчитано ────────
+samples-shows-samples  ~ green ~ 0 ~ Образцы из начала   ~ @kotlin ~ samples 'fun '        ~ 2026-08-16: 26 против 10 — число без образцов обмануло вывод
+samples-counts         ~ green ~ 0 ~ совпадений          ~ @kotlin ~ samples 'class '      ~ 2026-08-16: базовый счёт
+samples-bad-regex      ~ red   ~ 2 ~ неверное регулярное ~ @kotlin ~ samples 'Foo['        ~ 2026-08-17: битая регулярка выдавалась за «0 совпадений» с чистым кодом
+samples-no-match       ~ red   ~ 1 ~ 0 совпадений        ~ @kotlin ~ samples 'zzzNoSuch'   ~ 2026-08-17: отсутствие совпадений — код 1, не 0
+
+# ── counter: утверждение об отсутствии требует поиска присутствия ───────────
+counter-found          ~ red   ~ 1 ~ неверно             ~ @kotlin ~ counter Helper        ~ 2026-08-16: найденное опровергает утверждение об отсутствии
+counter-absent         ~ green ~ 0 ~ Не найдено          ~ @kotlin ~ counter zzzNoSuchTerm ~ 2026-08-16: подтверждённое отсутствие
+counter-sees-tests     ~ red   ~ 1 ~ неверно             ~ @kotlin ~ counter OnlyTestUser  ~ 2026-08-17: секрет в фикстуре — всё ещё секрет, тесты сканируются
+counter-shows-root     ~ green ~ 0 ~ Просканировано от   ~ @kotlin ~ counter zzzNoSuchTerm ~ 2026-08-17: отчёт называет корень
+
+# ── verified: правка реестра ────────────────────────────────────────────────
+verified-marks         ~ green ~ 0 ~ отмечен проверенным ~ reg:Ключ | never | 90        ~ verified Ключ    ~ 2026-08-17: команда не работала вообще — читала чужой временный файл
+verified-unknown-name  ~ red   ~ 2 ~ нет                 ~ reg:Ключ | never | 90        ~ verified Чужой   ~ 2026-08-16: несуществующее имя
+verified-empty-name    ~ red   ~ 2 ~ пустое имя          ~ reg:Ключ | never | 90        ~ verified ''      ~ 2026-08-17: пустое имя рапортовало об успехе
+verified-no-registry   ~ red   ~ 2 ~ нет                 ~ -                            ~ verified Ключ    ~ 2026-08-17: реестра нет
+verified-bad-period    ~ red   ~ 2 ~ не разобран         ~ reg:Ключ | never | тридцать  ~ verified Ключ    ~ 2026-08-17: молча подставлял 30 и стирал улику порчи
+
+# ── init ────────────────────────────────────────────────────────────────────
+init-creates-registry  ~ green ~ 0 ~ Создан              ~ @kotlin ~ init                  ~ 2026-08-17: базовая установка конфига
+init-no-key-scan       ~ green ~ 0 ~ !id_ed25519          ~ @kotlin ~ init                 ~ 2026-08-16: init печатал на экран пути к приватным ключам
+init-reports-masks     ~ green ~ 0 ~ Маски исходников     ~ @kotlin ~ init                 ~ 2026-08-17: определение обязано показывать, что нашло
+
+# ── общий контракт ──────────────────────────────────────────────────────────
+usage-no-args          ~ green ~ 0 ~ redfirst init        ~ -       ~ NOARGS               ~ 2026-08-17: без аргументов — справка, код 0
+unknown-command        ~ red   ~ 2 ~ неизвестная команда  ~ -       ~ нетакой               ~ 2026-08-17: неизвестная команда — код 2
+version-flag           ~ green ~ 0 ~ redfirst             ~ -       ~ --version             ~ 2026-08-17: версия печатается
