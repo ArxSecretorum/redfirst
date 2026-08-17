@@ -687,17 +687,37 @@ cmd_changed() {
 
 LEDGER="$CONFIG_DIR/ledger"
 
-_ledger_append() {   # дата, состояние, код, команда, утверждение
+# Which code the entry is about. Without it the journal reads, a week later, as
+# "the hook reaches the human — red 17.08, green 17.08" and matches no change
+# in the repository: there is nothing to look at next to the claim.
+#
+# The tree state is part of the answer. A red recorded while the working tree
+# differs from HEAD is only approximately located at HEAD, and saying so is
+# cheaper than being wrong about it later. The tool's own config directory does
+# not count as a change — otherwise the second entry would always be blaming
+# the first one for existing.
+_code_at() {
+    git rev-parse --git-dir >/dev/null 2>&1 || { printf 'not-a-repo'; return 0; }
+    _h=$(git rev-parse HEAD 2>/dev/null) || _h=""
+    [ -n "$_h" ] || { printf 'no-commit'; return 0; }
+    _st=$(git status --porcelain 2>/dev/null | grep -vF "$CONFIG_DIR" | head -n 1)
+    if [ -n "$_st" ]; then printf '%s+dirty' "$_h"; else printf '%s' "$_h"; fi
+}
+
+_ledger_append() {   # дата, состояние, код, команда, утверждение, коммит
     mkdir -p "$CONFIG_DIR"
-    printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" >> "$LEDGER"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "$6" >> "$LEDGER"
 }
 
 # Last recorded state for a claim; empty when the claim is unknown.
+# Six fields are read, not five: with five the last variable would swallow
+# "claim<TAB>commit" and the exact-wording match — the whole key linking a red
+# to its green — would never hold again.
 _ledger_state=""
 _ledger_last_state() {
     _ledger_state=""
     [ -f "$LEDGER" ] || return 0
-    while IFS='	' read -r _ld _ls _lc _lcmd _lclaim || [ -n "$_lclaim" ]; do
+    while IFS='	' read -r _ld _ls _lc _lcmd _lclaim _lcommit || [ -n "$_lclaim" ]; do
         # `if/fi`, не `&&`. Если последняя строка журнала не про это
         # утверждение, `&&` оставляет статус 1: он становится статусом цикла,
         # затем функции, и `set -e` убивает вызывающего. Поймано на живом
@@ -743,13 +763,14 @@ _red_green() {
     tail -n 6 "$TMP/rg" | sed 's/^/  /'
 
     today=$(date +%Y-%m-%d)
+    at=$(_code_at)
     if [ "$want" = "red" ]; then
         if [ "$rc" = "0" ]; then
             printf 'REFUSED: the command succeeded, and you declared it red.\n'
             printf 'Nothing to record: there was no failing check.\n'
             exit 2
         fi
-        _ledger_append "$today" red "$rc" "$*" "$claim"
+        _ledger_append "$today" red "$rc" "$*" "$claim" "$at"
         printf 'Recorded RED. Close it with: redfirst green "%s" -- <the same command>\n' "$claim"
         exit 0
     fi
@@ -772,7 +793,7 @@ _red_green() {
         printf 'Still red (exit %s). Not recording: there was no transition.\n' "$rc"
         exit 1
     fi
-    _ledger_append "$today" green 0 "$*" "$claim"
+    _ledger_append "$today" green 0 "$*" "$claim" "$at"
     printf 'Recorded GREEN. The red-to-green transition is shown and recorded.\n'
     exit 0
 }
@@ -785,10 +806,18 @@ cmd_log() {
         exit 2
     fi
     printf 'redfirst: check journal (%s)\n\n' "$LEDGER"
-    while IFS='	' read -r d s c cmd claim || [ -n "$claim" ]; do
+    while IFS='	' read -r d s c cmd claim at || [ -n "$claim" ]; do
         [ -n "$claim" ] || continue
+        # Entries written before the commit field existed do not carry one, and
+        # they are shown as they are. Rewriting a journal after the fact is the
+        # silent correction this tool exists to refuse.
+        case $at in
+            '') at='—' ;;
+            *)  _sfx=''; case $at in *+dirty) _sfx='+dirty' ;; esac
+                at="$(printf '%.7s' "$at")$_sfx" ;;
+        esac
         printf '  %s  %-6s exit %-3s %s\n' "$d" "$s" "$c" "$claim"
-        printf '                          %s\n' "$cmd"
+        printf '              %-14s %s\n' "$at" "$cmd"
     done < "$LEDGER"
     printf '\n'
     open=$(_open_claims)

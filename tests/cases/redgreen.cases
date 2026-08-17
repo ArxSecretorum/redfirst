@@ -18,8 +18,19 @@ redgreen-empty-claim         ~ red   ~ 2 ~ empty claim ~ - ~ @sh sh "$RF" red ""
 redgreen-needs-separator     ~ red   ~ 2 ~ you need -- ~ - ~ @sh sh "$RF" red "проба" true ~ 2026-08-17: без -- непонятно, где кончается утверждение и начинается команда
 redgreen-needs-command       ~ red   ~ 2 ~ no command given ~ - ~ @sh sh "$RF" red "проба" -- ~ 2026-08-17: утверждение без команды — снова слово вместо проверки
 
+# ── Д3: запись обязана знать, о каком коде шла речь ─────────────────────────
+# Журнал писал дату, состояние, код, команду и утверждение. Через неделю
+# «хук доходит до человека — красное 17.08, зелёное 17.08» не сопоставляется
+# ни с одним изменением: кода за записью нет.
+
+redgreen-records-commit  ~ green ~ 0 ~ COMMIT-IN-LEDGER ~ - ~ @sh git init -q .; git -c user.email=t@t -c user.name=t commit -q --allow-empty -m x; sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; H=$(git rev-parse HEAD); grep -qF "$H" .redfirst/ledger && echo COMMIT-IN-LEDGER ~ 2026-08-17: Д3 — в записи обязан стоять коммит на момент запуска
+redgreen-outside-git     ~ green ~ 0 ~ not-a-repo && Recorded RED ~ - ~ @sh sh "$RF" red "проба" -- sh -c 'exit 1'; cat .redfirst/ledger ~ 2026-08-17: Д3 — вне репозитория журнал обязан не падать, а сказать прямо, что кода за записью нет
+redgreen-marks-dirty     ~ green ~ 0 ~ +dirty ~ - ~ @sh git init -q .; git -c user.email=t@t -c user.name=t commit -q --allow-empty -m x; printf 'x\n' > junk.kt; sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; cat .redfirst/ledger ~ 2026-08-17: коммит при грязном дереве описывает запись лишь приблизительно, и сказать об этом обязана сама запись
+redgreen-own-files-clean ~ green ~ 0 ~ !+dirty ~ - ~ @sh git init -q .; git -c user.email=t@t -c user.name=t commit -q --allow-empty -m x; sh "$RF" red "первое" -- sh -c 'exit 1' >/dev/null 2>&1; sh "$RF" red "второе" -- sh -c 'exit 1' >/dev/null 2>&1; cat .redfirst/ledger ~ 2026-08-17: собственный журнал инструмента не делает дерево грязным — иначе вторая запись всегда обвиняла бы первую
+
 # ── журнал ──────────────────────────────────────────────────────────────────
 log-empty                    ~ red   ~ 2 ~ check journal is empty ~ - ~ @sh sh "$RF" log ~ 2026-08-17: пустой журнал — это отказ отвечать, а не «всё закрыто»
 log-open                     ~ red   ~ 1 ~ OPEN ~ - ~ @sh sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; sh "$RF" log ~ 2026-08-17: показанное красным и не закрытое обязано быть названо
 log-closed                   ~ green ~ 0 ~ closed green ~ - ~ @sh sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; sh "$RF" green "проба" -- true >/dev/null 2>&1; sh "$RF" log ~ 2026-08-17: закрытый журнал даёт ноль. Ловушка set -e: цикл возвращал 1, log печатал журнал и молча выходил единицей
+log-shows-commit             ~ green ~ 0 ~ COMMIT-IN-LOG ~ - ~ @sh git init -q .; git -c user.email=t@t -c user.name=t commit -q --allow-empty -m x; sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; S=$(git rev-parse --short=7 HEAD); sh "$RF" log | grep -qF "$S" && echo COMMIT-IN-LOG ~ 2026-08-17: Д3 — журнал человек читает через log, и коммит обязан быть виден именно там
 log-keeps-both-entries       ~ green ~ 0 ~ red && green ~ - ~ @sh sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; sh "$RF" green "проба" -- true >/dev/null 2>&1; sh "$RF" log ~ 2026-08-17: журнал накапливает, а не заменяет: виден и переход, и то, с чего начали
