@@ -229,7 +229,14 @@ cmd_wired() {
     cut -d: -f1 "$TMP/hits" | sort -u > "$TMP/hitfiles"
     _rf_decl=$(is_decl_re "$esc")
     _broken decl && _rf_decl='$^'
-    RF_SYM="$re" RF_DECL="$_rf_decl" RF_IMP="$import_re" \
+    # Fifth break point. Stripping strings and comments is the longest and least
+    # obvious part of this file, and until now no self-check touched it: `decl`
+    # breaks only the declaration regex. With RF_NOSTRIP the classifier sees raw
+    # lines, so a symbol mentioned in a comment counts as a call — exactly the
+    # 0.1.0 failure this awk block exists to prevent.
+    _rf_nostrip=0
+    _broken strings && _rf_nostrip=1
+    RF_SYM="$re" RF_DECL="$_rf_decl" RF_IMP="$import_re" RF_NOSTRIP="$_rf_nostrip" \
     awk '
     function strip_strings(s,   out,i,c,q,esc2) {
         out=""; q=""; esc2=0
@@ -254,6 +261,7 @@ cmd_wired() {
     FNR == 1 { inblock = 0; m = marker(FILENAME) }
     {
         raw = $0; code = raw
+        if (ENVIRON["RF_NOSTRIP"] != "1") {
         if (inblock) {
             p = index(code, "*/")
             if (p == 0) { code = "" } else { code = substr(code, p + 2); inblock = 0 }
@@ -266,6 +274,7 @@ cmd_wired() {
         }
         p = index(code, m)
         if (p > 0) code = substr(code, 1, p - 1)
+        }
 
         if (code ~ ENVIRON["RF_SYM"]) {
             if (code ~ ENVIRON["RF_DECL"])      bucket = "decl"

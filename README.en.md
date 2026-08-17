@@ -147,9 +147,14 @@ auditable is the only honest basis of trust for a tool like this.
 ## Regression suite
 
 ```sh
-sh tests/run              # 128 cases across dash and bash
+sh tests/run              # 90 cases across dash and bash — 180 checks
 sh tests/run --self-check # breaks the tool on purpose, demands the suite notices
 ```
+
+`sh tests/run` currently exits **1**, and that is not a malfunction: twelve
+cases are marked `red?` / `green?` — "the direction is right, the tool does not
+meet it yet". Those are publication blockers, written down before the fix. No
+regressions: 0 blockers, 0 noise, 0 shell divergences.
 
 Built around the fact that not all failures are equal. Every case declares a
 direction: `red` means the tool **must** raise the alarm, `green` means it must
@@ -162,7 +167,7 @@ Everything runs in two shells, and a divergence between them is its own failure
 class: the bashism `$((10#08))` was invisible under bash and killed `due` on
 every August date, and `/bin/sh` on Debian and Raspberry Pi OS is dash.
 
-`--self-check` deliberately breaks the tool at four points and requires the
+`--self-check` deliberately breaks the tool at five points and requires the
 suite to go red. A suite that cannot be shown failing proves nothing — the same
 "green proves nothing" this tool exists to fight, one level up.
 

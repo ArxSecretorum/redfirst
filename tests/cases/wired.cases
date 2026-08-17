@@ -3,21 +3,26 @@
 #
 # red здесь означает «инструмент обязан назвать символ мёртвым» либо
 # «обязан отказаться от вывода», green — «обязан признать живым».
+#
+# Утверждения разделяются `&&`. Кроме подстрок доступны:
+#   n:total|decl|text|imp|call=<число> — точное число в корзине отчёта
+#   sum                               — всего = объявления+строки+импорты+вызовы
+# Числа проверены на стенде вручную 2026-08-17, а не выведены из кода.
 
-wired-dead-kotlin      ~ red   ~ 1 ~ Ноль вызовов        ~ @kotlin   ~ wired Orphan       ~ 2026-08-16: мёртвый класс с doc-комментарием и упоминанием в строках
-wired-live-kotlin      ~ green ~ 0 ~ ОСТАЁТСЯ ВЫЗОВОВ    ~ @kotlin   ~ wired Helper       ~ 2026-08-16: живой символ обязан остаться живым
-wired-only-in-test     ~ red   ~ 1 ~ Ноль вызовов        ~ @kotlin   ~ wired TestedOnly   ~ 2026-08-16: вызов только из теста — не production
+wired-dead-kotlin      ~ red   ~ 1 ~ Ноль вызовов && n:total=4 && n:decl=1 && n:text=3 && n:call=0 && sum ~ @kotlin   ~ wired Orphan       ~ 2026-08-16: мёртвый класс с doc-комментарием и упоминанием в строках
+wired-live-kotlin      ~ green ~ 0 ~ ОСТАЁТСЯ ВЫЗОВОВ && n:total=3 && n:decl=1 && n:call=2 && sum ~ @kotlin   ~ wired Helper       ~ 2026-08-16: живой символ обязан остаться живым
+wired-only-in-test     ~ red   ~ 1 ~ Ноль вызовов && n:total=1 && n:call=0 && sum ~ @kotlin   ~ wired TestedOnly   ~ 2026-08-16: вызов только из теста — не production
 wired-audit-not-test   ~ green ~ 0 ~ AUDIT.kt            ~ @kotlin   ~ wired Helper       ~ 2026-08-16: шаблон *IT.* глотал AUDIT — файл обязан числиться боевым
-wired-dead-go-receiver ~ red   ~ 1 ~ Ноль вызовов        ~ @go       ~ wired DeadThing    ~ 2026-08-16: func (d DeadThing) Method() засчитывался вызовом
-wired-live-go          ~ green ~ 0 ~ ОСТАЁТСЯ ВЫЗОВОВ    ~ @go       ~ wired LiveThing    ~ 2026-08-16: контроль к предыдущему
-wired-strings-js       ~ red   ~ 1 ~ Ноль вызовов        ~ @js       ~ wired Ghost        ~ 2026-08-17: строка, шаблон, хвостовой и блочный комментарий
-wired-live-js          ~ green ~ 0 ~ ОСТАЁТСЯ ВЫЗОВОВ    ~ @js       ~ wired Real         ~ 2026-08-17: упоминание в строке не должно убивать живой символ
+wired-dead-go-receiver ~ red   ~ 1 ~ Ноль вызовов && sum ~ @go       ~ wired DeadThing    ~ 2026-08-16: func (d DeadThing) Method() засчитывался вызовом
+wired-live-go          ~ green ~ 0 ~ ОСТАЁТСЯ ВЫЗОВОВ && sum ~ @go   ~ wired LiveThing    ~ 2026-08-16: контроль к предыдущему
+wired-strings-js       ~ red   ~ 1 ~ Ноль вызовов && sum ~ @js       ~ wired Ghost        ~ 2026-08-17: строка, шаблон, хвостовой и блочный комментарий
+wired-live-js          ~ green ~ 0 ~ ОСТАЁТСЯ ВЫЗОВОВ && sum ~ @js   ~ wired Real         ~ 2026-08-17: упоминание в строке не должно убивать живой символ
 wired-subdirectories   ~ green ~ 0 ~ ОСТАЁТСЯ ВЫЗОВОВ    ~ @js       ~ wired Buried       ~ 2026-08-16: маска раскрывалась оболочкой, подкаталоги не сканировались
-wired-python-hash      ~ red   ~ 1 ~ Ноль вызовов        ~ @python   ~ wired Thing        ~ 2026-08-17: решётка внутри URL не комментарий
-wired-python-live      ~ green ~ 0 ~ ОСТАЁТСЯ ВЫЗОВОВ    ~ @python   ~ wired Used         ~ 2026-08-17: контроль
+wired-python-hash      ~ red   ~ 1 ~ Ноль вызовов && sum ~ @python   ~ wired Thing        ~ 2026-08-17: решётка внутри URL не комментарий
+wired-python-live      ~ green ~ 0 ~ ОСТАЁТСЯ ВЫЗОВОВ && sum ~ @python ~ wired Used       ~ 2026-08-17: контроль
 wired-missing-symbol   ~ red   ~ 2 ~ НЕ вывод о мёртвом  ~ @kotlin   ~ wired НетТакого    ~ 2026-08-16: ноль совпадений — не вердикт о мёртвом коде
 wired-regex-metachar   ~ red   ~ 2 ~ не встречается      ~ @kotlin   ~ wired auth.login   ~ 2026-08-16: точка как метасимвол находила auth_login
 wired-empty-symbol     ~ red   ~ 2 ~ -                   ~ @kotlin   ~ wired ''           ~ 2026-08-17: пустое имя не должно давать вердикт
 wired-shows-root       ~ green ~ 0 ~ Просканировано от   ~ @kotlin   ~ wired Helper       ~ 2026-08-17: отчёт обязан называть корень сканирования
-wired-shows-buckets    ~ green ~ 0 ~ из них объявления   ~ @kotlin   ~ wired Helper       ~ 2026-08-17: разбор по корзинам виден владельцу
+wired-shows-buckets    ~ green ~ 0 ~ из них объявления && sum ~ @kotlin ~ wired Helper     ~ 2026-08-17: разбор по корзинам виден владельцу
 wired-nomarker-project ~ red   ~ 1 ~ Ноль вызовов        ~ @nomarker ~ wired Alone        ~ 2026-08-17: проект без маркера сборки всё равно сканируется
