@@ -407,6 +407,14 @@ cmd_wired() {
             grep "^code	" "$TMP/cls" | cut -f3 | head -n 8 | sed 's/^/  /'
             printf 'Outside this file the name does not appear. For a private helper that is normal;\n'
             printf 'for a class or a service it is a reason to ask who was supposed to call it.\n'
+            # A mention is not a user, and this branch is where the two are
+            # easiest to confuse: `type DeadThing struct{}` plus
+            # `func (d DeadThing) Method()` counts two, and both of them are the
+            # thing declaring itself. Telling declarations from calls needs the
+            # parser that failed on six forms out of seven and was thrown away —
+            # so the count stays honest and the reader is told what to look at.
+            printf 'Read those lines before deciding: if they are only the declaration and its own\n'
+            printf 'methods, then the mentions are the thing naming itself - the users are zero.\n'
         fi
         if [ "$ntext" != "0" ]; then
             printf 'Also mentioned outside code (not counted):\n'
