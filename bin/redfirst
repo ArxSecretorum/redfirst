@@ -142,8 +142,15 @@ scanned_root_note() {
     printf 'Просканировано от: %s\n' "$here"
     root=$(git rev-parse --show-toplevel 2>/dev/null || true)
     if [ -n "$root" ]; then
-        case "$here" in
-            "$root") ;;
+        # Оба пути прогоняются через одну и ту же оболочку, а не сравниваются
+        # как есть. Под Git Bash `pwd` даёт /c/Users/…, а git — C:/Users/…, и
+        # дословное сравнение не совпадало НИКОГДА: предупреждение «корень выше»
+        # печаталось в самом корне, на каждом запуске. Найдено новой командой
+        # `changed` на первом же пробном прогоне.
+        root_real=$(cd "$root" 2>/dev/null && pwd -P) || root_real=""
+        here_real=$(pwd -P)
+        case "$here_real" in
+            "$root_real") ;;
             *) printf 'ВНИМАНИЕ: корень репозитория выше — %s. Здесь виден только его кусок.\n' "$root" ;;
         esac
     fi
@@ -470,6 +477,195 @@ cmd_counter() {
     fi
     printf 'Не найдено. Приложите этот вывод к утверждению об отсутствии.\n'
     exit 0
+}
+
+# ── changed ──────────────────────────────────────────────────────────────────
+# Каждая команда выше принимает имя, которое надо знать заранее. А человек,
+# который не читает код, узнаёт это имя от ассистента — от той самой стороны,
+# которую собирается проверить. Утверждение «почистил старый путь авторизации»
+# проверить нечем: имени в нём нет.
+#
+# Эта команда достаёт кандидатов из самого изменения. Она НЕ разбирает синтаксис:
+# распознавание объявлений выброшено после того, как провалилось на шести формах
+# из семи, и возвращать его через заднюю дверь нельзя. Здесь только два вопроса,
+# на которые отвечает grep:
+#
+#   ПОЯВИЛОСЬ — имя есть в добавленных строках и НЕТ во всей базе сравнения;
+#   ИСЧЕЗЛО   — имя есть в удалённых строках и НЕТ во всём текущем состоянии.
+#
+# Первое проверяется через `wired`: подключено ли то, что появилось. Второе —
+# через `counter`: не осталось ли ссылок на то, чего больше нет.
+#
+# Это кандидаты, а не вердикт, и так написано в выводе. Имена берутся из строк
+# целиком, включая строки и комментарии: отделять одно от другого — снова разбор
+# синтаксиса.
+
+_CHANGED_MAX=200
+# Документы из подсчёта исключены: слово из прозы не делает вещь подключённой.
+_CH_NOT_CODE='\.(md|mdx|txt|rst|html)$'
+_CHANGED_STOP='^(if|else|elif|then|fi|for|while|do|done|case|esac|switch|break|continue|return|function|func|class|struct|enum|interface|import|from|package|public|private|protected|internal|static|final|const|let|var|val|def|fun|new|this|self|null|nil|none|true|false|void|int|string|bool|float|double|char|byte|long|short|array|list|dict|map|set|type|typedef|extends|implements|override|abstract|throws|catch|try|finally|throw|raise|with|async|await|yield|lambda|print|printf|echo|test|assert|error|value|values|name|names|data|item|items|result|index|count|size|length|line|lines|file|files|path|paths|text|args|kwargs|param|params)$'
+
+_is_source_path() {
+    for _p in $(source_patterns); do
+        case "$1" in $_p) return 0 ;; esac
+    done
+    # Файл без расширения с shebang — это тоже исходник: `bin/redfirst`,
+    # `tests/run`, любой скрипт в bin/. Маски их не ловят по построению, и на
+    # первом же пробном запуске `changed` пропустил главный файл самого
+    # инструмента, отчитавшись «изменено файлов с кодом: 1».
+    case "$1" in
+        *.*) return 1 ;;
+    esac
+    [ -f "$1" ] || return 1
+    IFS= read -r _first < "$1" 2>/dev/null || return 1
+    case "$_first" in
+        '#!'*) return 0 ;;
+    esac
+    return 1
+}
+
+cmd_changed() {
+    base=${1:-HEAD}
+    git rev-parse --git-dir >/dev/null 2>&1 || die 'не git-репозиторий: сравнивать не с чем'
+    git rev-parse --verify --quiet "$base" >/dev/null 2>&1 || die "не найдена точка сравнения: $base"
+
+    printf 'redfirst changed: что появилось и что исчезло\n'
+    scanned_root_note
+    printf 'Сравниваю с: %s\n' "$base"
+
+    git diff --name-only "$base" > "$TMP/ch.files" 2>/dev/null || : > "$TMP/ch.files"
+    set --
+    nsrc=0; nskip=0
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        if is_noise "./$f" || ! _is_source_path "$f"; then
+            nskip=$((nskip + 1)); continue
+        fi
+        nsrc=$((nsrc + 1))
+        set -- "$@" "$f"
+    done < "$TMP/ch.files"
+
+    # Неотслеживаемые файлы `git diff` не показывает вовсе, а «ассистент только
+    # что написал новый файл» — самый частый случай из всех. Найдено случаем
+    # changed-new-symbol на первом же прогоне: команда отвечала «изменений в
+    # коде нет» при двух новых файлах в дереве.
+    git ls-files --others --exclude-standard > "$TMP/ch.untracked" 2>/dev/null \
+        || : > "$TMP/ch.untracked"
+    : > "$TMP/ch.newfiles"
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        if is_noise "./$f" || ! _is_source_path "$f"; then
+            nskip=$((nskip + 1)); continue
+        fi
+        nsrc=$((nsrc + 1))
+        printf '%s\n' "$f" >> "$TMP/ch.newfiles"
+    done < "$TMP/ch.untracked"
+
+    if [ "$nsrc" = "0" ]; then
+        printf 'Изменённых файлов с исходным кодом нет (пропущено %s: тесты, сборка, не-код).\n' "$nskip"
+        printf 'Проверять нечего — это НЕ вывод о том, что изменение безопасно.\n'
+        exit 2
+    fi
+    printf 'Изменено файлов с кодом: %s (пропущено %s)\n\n' "$nsrc" "$nskip"
+
+    # Кавыченные позиционные параметры, а не $(cat): путь с пробелом распадался
+    # на два несуществующих, и та же ошибка уже стоила `wired` целого вердикта.
+    git diff -U0 "$base" -- "$@" > "$TMP/ch.diff" 2>/dev/null || : > "$TMP/ch.diff"
+    grep '^+' "$TMP/ch.diff" | grep -v '^+++' > "$TMP/ch.add" 2>/dev/null || : > "$TMP/ch.add"
+    grep '^-' "$TMP/ch.diff" | grep -v '^---' > "$TMP/ch.del" 2>/dev/null || : > "$TMP/ch.del"
+    # Новый файл целиком — добавленные строки.
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        cat "$f" >> "$TMP/ch.add" 2>/dev/null || true
+    done < "$TMP/ch.newfiles"
+
+    _words() {   # файл -> отсортированный список слов
+        tr -cs 'A-Za-z0-9_' '\n' < "$1" \
+            | grep -E '^[A-Za-z_][A-Za-z0-9_]{3,}$' \
+            | grep -Ev "$_CHANGED_STOP" \
+            | sort -u
+    }
+    _words "$TMP/ch.add" > "$TMP/ch.addw"
+    _words "$TMP/ch.del" > "$TMP/ch.delw"
+
+    nadd=$(grep -c . < "$TMP/ch.addw" || true)
+    ndel=$(grep -c . < "$TMP/ch.delw" || true)
+    capped=0
+    if [ "$((nadd + ndel))" -gt "$_CHANGED_MAX" ]; then
+        capped=$((nadd + ndel))
+        head -n "$_CHANGED_MAX" "$TMP/ch.addw" > "$TMP/ch.addw.cap"; mv "$TMP/ch.addw.cap" "$TMP/ch.addw"
+        head -n "$_CHANGED_MAX" "$TMP/ch.delw" > "$TMP/ch.delw.cap"; mv "$TMP/ch.delw.cap" "$TMP/ch.delw"
+    fi
+
+    # Появилось = нет во всей базе сравнения. Исчезло = нет во всём текущем.
+    #
+    # Плюс два отсева, без которых список бесполезен тому, ради кого написан.
+    # Первый прогон на настоящем коммите дал сорок три кандидата, из которых
+    # больше половины были английские слова из комментариев — «unverifiable»,
+    # «accumulates», «anyone».
+    #
+    #   * имя, встречающееся ОДИН раз во всём дереве, — это упоминание, а не
+    #     вещь: ровно тот же довод, по которому `wired` называет такое мёртвым;
+    #   * имя, разошедшееся по трём и более файлам, заведомо подключено, и
+    #     спрашивать про него `wired` незачем.
+    #
+    # Остаётся то, про что `wired` скажет что-то содержательное. Сколько отсеяно
+    # — печатается: молчаливое сокращение списка читалось бы как «больше ничего
+    # и не было».
+    : > "$TMP/ch.new"; : > "$TMP/ch.gone"
+    dropped_once=0; dropped_spread=0
+    while IFS= read -r w; do
+        [ -n "$w" ] || continue
+        # Считаем по КОДУ, а не по документам. Первый прогон оставил в списке
+        # «unverifiable», «anyone», «accumulates»: они встречались дважды —
+        # один раз в комментарии и один раз в английском README. Проза не
+        # подключает ничего.
+        if git grep -l -F -e "$w" "$base" 2>/dev/null | grep -qvE "$_CH_NOT_CODE"; then
+            continue                       # уже было в коде базы — не новое
+        fi
+        _nf=$(git grep --untracked -l -F -e "$w" 2>/dev/null | grep -vE "$_CH_NOT_CODE" | grep -c . || true)
+        _nh=$(git grep --untracked -F -e "$w" 2>/dev/null | grep -vE "^[^:]*\.(md|mdx|txt|rst|html):" | grep -c . || true)
+        if [ "$_nh" -le 1 ]; then dropped_once=$((dropped_once + 1)); continue; fi
+        if [ "$_nf" -ge 3 ]; then dropped_spread=$((dropped_spread + 1)); continue; fi
+        printf '%s\n' "$w" >> "$TMP/ch.new"
+    done < "$TMP/ch.addw"
+    while IFS= read -r w; do
+        [ -n "$w" ] || continue
+        git grep -q -F -- "$w" >/dev/null 2>&1 || printf '%s\n' "$w" >> "$TMP/ch.gone"
+    done < "$TMP/ch.delw"
+
+    nnew=$(grep -c . < "$TMP/ch.new" || true)
+    ngone=$(grep -c . < "$TMP/ch.gone" || true)
+
+    if [ "$nnew" != "0" ]; then
+        printf 'ПОЯВИЛОСЬ — этих имён в базе сравнения не было. Подключено ли:\n'
+        while IFS= read -r w; do printf '  redfirst wired %s\n' "$w"; done < "$TMP/ch.new"
+        printf '\n'
+    fi
+    if [ "$ngone" != "0" ]; then
+        printf 'ИСЧЕЗЛО — этих имён в текущем состоянии нет. Не осталось ли ссылок:\n'
+        while IFS= read -r w; do printf '  redfirst counter %s\n' "$w"; done < "$TMP/ch.gone"
+        printf '\n'
+    fi
+
+    printf 'Это КАНДИДАТЫ, а не вердикт. Имена взяты из изменённых строк целиком,\n'
+    printf 'поэтому среди них будут слова из комментариев и локальные переменные:\n'
+    printf 'отделить их можно только разбором, а разбор отсюда выброшен намеренно.\n'
+    printf 'Список нужен как начало проверки, а не как её результат.\n'
+    if [ "$((dropped_once + dropped_spread))" != "0" ]; then
+        printf 'Отсеяно: %s встречаются во всём дереве по одному разу (упоминание,\n' "$dropped_once"
+        printf 'а не вещь), %s разошлись по трём и более файлам (заведомо подключены).\n' "$dropped_spread"
+    fi
+    if [ "$capped" != "0" ]; then
+        printf 'ВНИМАНИЕ: слов в изменении %s, показаны первые %s с каждой стороны.\n' \
+               "$capped" "$_CHANGED_MAX"
+        printf 'Список неполон — сузьте сравнение до одного коммита.\n'
+    fi
+    [ "$((nnew + ngone))" = "0" ] && {
+        printf 'Ни одного нового и ни одного исчезнувшего имени — проверять нечего.\n'
+        exit 0
+    }
+    exit 1
 }
 
 # ── red / green ──────────────────────────────────────────────────────────────
@@ -854,6 +1050,7 @@ usage() {
 redfirst — детерминированные точки останова для разработки с ИИ.
 
   redfirst init                 определить проект, создать конфиг
+  redfirst changed [<ref>]      что появилось и что исчезло — с чего начать проверку
   redfirst red "<что>" -- <кмд> запустить и записать: проверка ПАДАЕТ
   redfirst green "<что>" -- <кмд>  запустить и записать переход в зелёное
   redfirst log                  журнал: что показано красным и что закрыто
@@ -876,6 +1073,7 @@ EOF
 cmd="$1"; shift
 case "$cmd" in
     init)     cmd_init "$@" ;;
+    changed)  cmd_changed "$@" ;;
     red)      _red_green red "$@" ;;
     green)    _red_green green "$@" ;;
     log)      cmd_log "$@" ;;
