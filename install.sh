@@ -161,9 +161,20 @@ fi
 # The banner used to print unconditionally, including when nothing was wired.
 echo
 if [ "$hook_done" = 1 ]; then
+    # The second paragraph is the honest half. This installer establishes that
+    # the command runs; the product is that its output REACHES A HUMAN, and
+    # that part is decided by the harness, which cannot be interrogated from
+    # here. Saying so is cheaper than checking and more honest than silence —
+    # and the same gap already cost a hook that ran fine from a POSIX shell
+    # and not at all from anywhere else.
     cat <<'EOF'
 It works on its own: at the start of every session the assets whose restore
 check is overdue are printed. The harness prints them, not the model.
+
+What this installer did NOT check: that your harness will SHOW that output. It
+ran the hook command for real, and that is all it can see from here. Whether
+the harness surfaces it becomes visible at the next session start and nowhere
+earlier - so look then, and if nothing appears, the hook is not doing its job.
 EOF
 else
     cat <<'EOF'

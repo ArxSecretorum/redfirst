@@ -397,6 +397,10 @@ cmd_wired() {
     # Без существительного: «3 упоминания» и «5 упоминаний» — разные формы,
     # а согласовывать числительное в shell дороже, чем оно стоит.
     [ "$nhits" -gt 8 ] && printf '  … and %s more\n' "$((nhits - 8))"
+    # Said here rather than only in the README, because "ALIVE" is exactly the
+    # word a reader turns into "works" — and this tool's audience is the one
+    # that cannot check the difference by reading the code.
+    printf 'This says the name is present. It says NOTHING about whether it is correct.\n'
     exit 0
 }
 

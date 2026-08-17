@@ -14,6 +14,7 @@
 
 wired-dead-kotlin      ~ red   ~ 1 ~ A SINGLE MENTION && n:files=2 && n:code=1 && n:text=1 && n:hits=1 && sum ~ @kotlin ~ wired Orphan ~ 2026-08-16: мёртвый класс с doc-комментарием и упоминанием в строках. Второй файл упоминает его только в литералах и в счёт не идёт
 wired-live-kotlin      ~ green ~ 0 ~ ALIVE && n:files=3 && n:code=3 && n:hits=3 && sum ~ @kotlin ~ wired Helper ~ 2026-08-16: живой символ обязан остаться живым
+wired-alive-not-correct ~ red  ~ 0 ~ NOTHING about whether it is correct ~ @kotlin ~ wired Helper ~ 2026-08-17: Д6 — «ЖИВЁТ» читается как «работает». Для аудитории, которая не может перепроверить чтением, это опасная двусмысленность, и снимать её обязан сам вывод, а не README
 wired-only-in-test     ~ red   ~ 1 ~ A SINGLE MENTION && n:files=1 && n:code=1 && sum ~ @kotlin ~ wired TestedOnly ~ 2026-08-16: вызов только из теста — не production
 wired-audit-not-test   ~ green ~ 0 ~ AUDIT.kt ~ @kotlin ~ wired Helper ~ 2026-08-16: шаблон *IT.* глотал AUDIT — файл обязан числиться боевым
 wired-dead-go-receiver ~ red   ~ 1 ~ ONLY INSIDE ITS OWN FILE && n:code=1 && n:hits=2 && sum ~ @go ~ wired DeadThing ~ 2026-08-17: получатель метода `func (d DeadThing) Method()` — второе упоминание в том же файле, поэтому вердикт мягче «единственного». Обе строки показаны, конструирования среди них нет
