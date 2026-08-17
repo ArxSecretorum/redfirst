@@ -1056,11 +1056,16 @@ cmd_due() {
         fi
     done < "$TMP/assets.norm"
 
-    # Where this prints decides whether the tool works at all. A SessionStart
-    # hook shows stdout only when it exits 0, and stderr only when it does not.
-    # 0.4.x printed to stdout and exited 1 — the single automatic guarantee of
-    # the product reached nobody, ever. In hook mode everything goes to stderr
-    # with a non-zero exit, which is the combination the harness surfaces.
+    # Where this prints decides whether the tool works at all, and the rule is
+    # not symmetric. Documented behaviour of a SessionStart hook: on exit 0 its
+    # stdout is handed to the MODEL as context; on a non-zero exit its stderr is
+    # shown to the USER. 0.4.x printed to stdout and exited 1 — the single
+    # automatic guarantee of the product reached nobody, ever.
+    #
+    # Hook mode therefore writes to stderr and exits non-zero: the only
+    # combination that reaches a person. Reaching the model instead would be
+    # this tool quietly telling the party under check that a check is overdue,
+    # which is the arrangement it exists to replace.
     say() {
         if _broken quiet; then printf '%s\n' "$1"; return; fi
         if [ "$quiet" = 1 ]; then printf '%s\n' "$1" >&2; else printf '%s\n' "$1"; fi
