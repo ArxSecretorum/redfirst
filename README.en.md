@@ -147,9 +147,15 @@ auditable is the only honest basis of trust for a tool like this.
 ## Regression suite
 
 ```sh
-sh tests/run              # 91 cases across dash and bash — 182 checks
+sh tests/run              # 103 cases across dash and bash — 212 checks
 sh tests/run --self-check # breaks the tool on purpose, demands the suite notices
 ```
+
+A case whose precondition cannot be created on this machine does not count as
+passed: it lands in a **NOT CHECKED** bucket, is named in the report, and the
+word "clean" becomes unavailable. On Windows four checks out of 212 are skipped
+that way — `chmod 000` silently does nothing there, so an unreadable file cannot
+be made. The suite is only complete on Linux.
 
 A case may be marked `red?` or `green?` — "the direction is right, the tool does
 not meet it yet". That is how a known open defect is written down: without the

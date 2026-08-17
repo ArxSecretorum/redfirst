@@ -187,48 +187,16 @@ grep_sources() {
 # replace a number that was never trustworthy.
 import_re='^[[:space:]]*(import|from|use|using|require|include|#include|package|extern[[:space:]]+crate)([[:space:]]|\()'
 
-# ── wired ────────────────────────────────────────────────────────────────────
-
-cmd_wired() {
-    [ $# -ge 1 ] || die 'usage: redfirst wired <Symbol>'
-    symbol="$1"
-    [ -n "$symbol" ] || die 'пустое имя символа'
-    [ "${#symbol}" -le "$MAX_SYMBOL" ] || die "имя длиннее $MAX_SYMBOL символов"
-    file_list_or_die
-
-    esc=$(esc_ere "$symbol")
-    re=$(bound "$esc")
-    grep_sources "$re" > "$TMP/hits" 2>/dev/null || true
-    total=$(grep -c . < "$TMP/hits" || true)
-
-    if [ "$total" = "0" ]; then
-        printf 'redfirst wired "%s": символ не встречается вообще (0 совпадений).\n' "$symbol"
-        printf 'Опечатка в имени или он вне просканированных масок — это НЕ вывод о мёртвом коде.\n'
-        exit 2
-    fi
-
-    cut -d: -f1 "$TMP/hits" | sort -u > "$TMP/hitfiles"
-
-    # The file list reaches awk as QUOTED positional parameters. It used to be
-    # an unquoted `$(cat …)`: a path with a space split into two names that do
-    # not exist, awk read nothing at all, and the report printed "всего
-    # совпадений 4" with zero in every bucket, followed by a categorical
-    # verdict — arithmetic that does not add up, delivered with confidence.
-    set --
-    while IFS= read -r f; do set -- "$@" "$f"; done < "$TMP/hitfiles"
-
-    # Break point. RF_NOSTRIP makes the classifier read raw lines, so a symbol
-    # named only in a comment counts as real use — the 0.1.0 failure this awk
-    # block exists to prevent, and the only thing the suite can check it by.
-    _rf_nostrip=0
-    _broken strings && _rf_nostrip=1
-    # Quote characters travel through the environment so this program can be
-    # written inside single quotes without escaping gymnastics. Regexes travel
-    # the same way: awk -v processes escape sequences and would eat the
-    # backslash that makes `auth.login` a literal dot.
-    RF_SYM="$re" RF_IMP="$import_re" RF_NOSTRIP="$_rf_nostrip" \
-    RF_DQ='"' RF_SQ=$(printf '\47') RF_BT='`' \
-    awk '
+# ── the classifier program ───────────────────────────────────────────────────
+# Held in a variable instead of inlined at the call site so a unit test can feed
+# it lines directly. It is the longest and least obvious code in this file, and
+# until it moved here the only way to check it was a full run of the tool: one
+# and a half seconds per assertion, and every failure arriving indirectly, as a
+# verdict rather than as a bucket.
+#
+# No apostrophe appears inside the program — quote characters travel in through
+# the environment — so it can live in a single-quoted string with no escaping.
+CLASSIFIER='
     BEGIN {
         dq = ENVIRON["RF_DQ"]; sq = ENVIRON["RF_SQ"]; bt = ENVIRON["RF_BT"]
         dq3 = dq dq dq; sq3 = sq sq sq
@@ -324,7 +292,50 @@ cmd_wired() {
         } else next
         printf "%s\t%s\t%s:%d:%s\n", bucket, FILENAME, FILENAME, FNR, raw
     }
-    ' "$@" > "$TMP/cls" 2>/dev/null || : > "$TMP/cls"
+'
+
+# ── wired ────────────────────────────────────────────────────────────────────
+
+cmd_wired() {
+    [ $# -ge 1 ] || die 'usage: redfirst wired <Symbol>'
+    symbol="$1"
+    [ -n "$symbol" ] || die 'пустое имя символа'
+    [ "${#symbol}" -le "$MAX_SYMBOL" ] || die "имя длиннее $MAX_SYMBOL символов"
+    file_list_or_die
+
+    esc=$(esc_ere "$symbol")
+    re=$(bound "$esc")
+    grep_sources "$re" > "$TMP/hits" 2>/dev/null || true
+    total=$(grep -c . < "$TMP/hits" || true)
+
+    if [ "$total" = "0" ]; then
+        printf 'redfirst wired "%s": символ не встречается вообще (0 совпадений).\n' "$symbol"
+        printf 'Опечатка в имени или он вне просканированных масок — это НЕ вывод о мёртвом коде.\n'
+        exit 2
+    fi
+
+    cut -d: -f1 "$TMP/hits" | sort -u > "$TMP/hitfiles"
+
+    # The file list reaches awk as QUOTED positional parameters. It used to be
+    # an unquoted `$(cat …)`: a path with a space split into two names that do
+    # not exist, awk read nothing at all, and the report printed "всего
+    # совпадений 4" with zero in every bucket, followed by a categorical
+    # verdict — arithmetic that does not add up, delivered with confidence.
+    set --
+    while IFS= read -r f; do set -- "$@" "$f"; done < "$TMP/hitfiles"
+
+    # Break point. RF_NOSTRIP makes the classifier read raw lines, so a symbol
+    # named only in a comment counts as real use — the 0.1.0 failure this awk
+    # block exists to prevent, and the only thing the suite can check it by.
+    _rf_nostrip=0
+    _broken strings && _rf_nostrip=1
+    # Quote characters travel through the environment so this program can be
+    # written inside single quotes without escaping gymnastics. Regexes travel
+    # the same way: awk -v processes escape sequences and would eat the
+    # backslash that makes `auth.login` a literal dot.
+    RF_SYM="$re" RF_IMP="$import_re" RF_NOSTRIP="$_rf_nostrip" \
+    RF_DQ='"' RF_SQ=$(printf '\47') RF_BT='`' \
+    awk "$CLASSIFIER" "$@" > "$TMP/cls" 2>/dev/null || : > "$TMP/cls"
 
     # The unit is the FILE, not the hit. A declaration needs no recognising:
     # it is simply the one file the name occurs in.
@@ -376,7 +387,9 @@ cmd_wired() {
     fi
     printf 'ЖИВЁТ: имя встречается в коде %s файлов.\n' "$ncode"
     grep "^code	" "$TMP/cls" | cut -f3 | head -n 8 | sed 's/^/  /'
-    [ "$nhits" -gt 8 ] && printf '  … и ещё %s упоминаний\n' "$((nhits - 8))"
+    # Без существительного: «3 упоминания» и «5 упоминаний» — разные формы,
+    # а согласовывать числительное в shell дороже, чем оно стоит.
+    [ "$nhits" -gt 8 ] && printf '  … и ещё %s\n' "$((nhits - 8))"
     exit 0
 }
 
