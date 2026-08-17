@@ -69,9 +69,32 @@ git clone https://github.com/ArxSecretorum/redfirst.git
 sh redfirst/install.sh /path/to/your/project
 ```
 
-The installer detects the project type, proposes candidates for irreplaceable
-assets, creates the config and writes the session-start hook. You type no paths
-— you confirm what it found and answer two questions.
+It asks nothing — there is no prompt anywhere in it. It detects the project
+type, creates `.redfirst/irreplaceable` from a template, writes the session-start
+hook into `.claude/settings.json`, and puts the rules for the assistant into
+`CLAUDE.md`. An existing `settings.json` or `CLAUDE.md` is never edited for you:
+it prints what to add and leaves the decision where it belongs.
+
+Filling in the asset list is then yours to do. Nothing else can do it — that
+list is the one part of this only you know.
+
+### Proving the hook reaches you
+
+The installer proves the command runs. It cannot prove your harness will show
+what the command prints, and it says so rather than implying otherwise. If you
+want that proved instead of assumed, borrow an event you can trigger by hand:
+
+```sh
+# temporarily, in .claude/settings.local.json — then delete it again
+"PostToolUse": [ { "hooks": [ { "type": "command", "command": "<the same command>" } ] } ]
+```
+
+Run anything, then look at what the command wrote. Here that answered four
+questions at once: project hooks do get executed, the edit was picked up with no
+restart, the hook ran from the project root, and it had a full `PATH`. The one
+step it cannot answer is whether `SessionStart` in particular puts that stderr
+in front of you — that one stays documented rather than measured, and the
+difference between those two words is what this whole tool is about.
 
 ## Commands
 
