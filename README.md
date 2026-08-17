@@ -128,10 +128,32 @@ You cannot declare something red that passes — there is nothing to record. You
 cannot close something green that never had a red: green on its own proves
 nothing, the tests were written by the same author as the code.
 
-`redfirst log` shows the journal: what was declared broken, on what date, by
-which command, and whether it reached green. Exit code 1 while any red is still
-open. It is the one artefact that accumulates, and the one a person who does not
-read code can open and read.
+`redfirst log` shows the journal: what was declared broken, on what date, at
+which commit, by which command, and whether it reached green. Exit code 1 while
+any red is still open. It is the one artefact that accumulates, and the one a
+person who does not read code can open and read.
+
+The commit is part of the entry because without it the journal reads, a week
+later, as a date next to a sentence and matches no change in the repository. If
+the working tree differed from `HEAD` at the time, the entry says `+dirty`
+rather than claiming a precision it does not have.
+
+Matching a green to its red by exact wording is what stops one check from
+closing another — and it means a typo leaves an entry nothing can close. That is
+what `drop` is for:
+
+<!-- redfirst-output: Withdrawn. Both entries stay in the journal -->
+```
+$ redfirst drop "the hok reaches the human" -- typo in the wording, reopened as "hook"
+redfirst drop: the hok reaches the human
+Reason: typo in the wording, reopened as "hook"
+Withdrawn. Both entries stay in the journal - nothing was deleted, and this
+is NOT a green: closing it green again requires showing a red again first.
+```
+
+A withdrawal needs a reason and is itself recorded. Deleting an entry outright
+is not offered: an entry that vanished is worse than a wrong one, because
+nothing is left to say it was ever there.
 
 ### `wired` — does this thing actually exist
 

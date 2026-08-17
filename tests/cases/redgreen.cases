@@ -28,6 +28,23 @@ redgreen-outside-git     ~ green ~ 0 ~ not-a-repo && Recorded RED ~ - ~ @sh sh "
 redgreen-marks-dirty     ~ green ~ 0 ~ +dirty ~ - ~ @sh git init -q .; git -c user.email=t@t -c user.name=t commit -q --allow-empty -m x; printf 'x\n' > junk.kt; sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; cat .redfirst/ledger ~ 2026-08-17: коммит при грязном дереве описывает запись лишь приблизительно, и сказать об этом обязана сама запись
 redgreen-own-files-clean ~ green ~ 0 ~ !+dirty ~ - ~ @sh git init -q .; git -c user.email=t@t -c user.name=t commit -q --allow-empty -m x; sh "$RF" red "первое" -- sh -c 'exit 1' >/dev/null 2>&1; sh "$RF" red "второе" -- sh -c 'exit 1' >/dev/null 2>&1; cat .redfirst/ledger ~ 2026-08-17: собственный журнал инструмента не делает дерево грязным — иначе вторая запись всегда обвиняла бы первую
 
+# ── Д4: опечатка в формулировке не должна оставлять вечное красное ──────────
+# Ключ связи красного и зелёного — точное совпадение формулировки, и это
+# сделано намеренно: так нельзя закрыть одно другим. Но опечатка создаёт
+# запись, которую нечем закрыть, и log показывает её открытой всегда.
+#
+# Отказ от записи обязан быть громким: молчаливое удаление хуже неверной
+# записи. Исчезнувшая запись не оставляет и следа о том, что её отзывали.
+
+drop-needs-separator ~ red   ~ 2 ~ you need -- ~ - ~ @sh sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; sh "$RF" drop "проба" опечатка ~ 2026-08-17: Д4 — без -- непонятно, где кончается формулировка и начинается причина
+drop-needs-reason    ~ red   ~ 2 ~ silent deletion ~ - ~ @sh sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; sh "$RF" drop "проба" -- ~ 2026-08-17: Д4 — отказ без причины и есть молчаливое удаление, только через другую дверь
+drop-refuses-unknown ~ red   ~ 2 ~ no open red with this wording ~ - ~ @sh sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; sh "$RF" drop "не та формулировка" -- ошибся ~ 2026-08-17: Д4 — отозвать можно только то, что открыто; иначе drop станет способом писать в журнал что угодно
+drop-refuses-closed  ~ red   ~ 2 ~ no open red with this wording ~ - ~ @sh sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; sh "$RF" green "проба" -- true >/dev/null 2>&1; sh "$RF" drop "проба" -- передумал ~ 2026-08-17: Д4 — закрытое зелёным отзывать нечего, и переписывать историю задним числом нельзя
+drop-closes-open     ~ green ~ 0 ~ !OPEN ~ - ~ @sh sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; sh "$RF" drop "проба" -- опечатка в формулировке >/dev/null 2>&1; sh "$RF" log ~ 2026-08-17: Д4 — отозванное перестаёт числиться открытым, иначе вечное красное так и остаётся вечным
+drop-keeps-record    ~ green ~ 0 ~ red && drop && dropped: ~ - ~ @sh sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; sh "$RF" drop "проба" -- опечатка в формулировке >/dev/null 2>&1; sh "$RF" log ~ 2026-08-17: Д4 — в журнале остаются обе записи и причина отказа: удаления не происходит
+drop-not-a-green     ~ green ~ 0 ~ !closed green ~ - ~ @sh sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; sh "$RF" drop "проба" -- опечатка в формулировке >/dev/null 2>&1; sh "$RF" log ~ 2026-08-17: Д4 — отозванное не должно засчитываться закрытым зелёным: это разные исходы, и путать их — снова выдавать «не знаю» за «в порядке»
+drop-then-green-refused ~ red ~ 2 ~ Green without a red ~ - ~ @sh sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; sh "$RF" drop "проба" -- опечатка >/dev/null 2>&1; sh "$RF" green "проба" -- true ~ 2026-08-17: Д4 — после отказа зелёное снова требует красного; иначе drop станет обходом главного правила
+
 # ── журнал ──────────────────────────────────────────────────────────────────
 log-empty                    ~ red   ~ 2 ~ check journal is empty ~ - ~ @sh sh "$RF" log ~ 2026-08-17: пустой журнал — это отказ отвечать, а не «всё закрыто»
 log-open                     ~ red   ~ 1 ~ OPEN ~ - ~ @sh sh "$RF" red "проба" -- sh -c 'exit 1' >/dev/null 2>&1; sh "$RF" log ~ 2026-08-17: показанное красным и не закрытое обязано быть названо

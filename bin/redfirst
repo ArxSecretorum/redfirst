@@ -798,6 +798,54 @@ _red_green() {
     exit 0
 }
 
+# ── drop ─────────────────────────────────────────────────────────────────────
+# The key linking a red to its green is the exact wording, and that is
+# deliberate: it is what stops one check from closing another. The cost is that
+# a typo creates an entry nothing can ever close, and `log` shows it open for
+# ever. An instrument whose journal fills with undeletable noise stops being
+# read, and an unread journal proves nothing.
+#
+# So there is a way out, and it is loud. Withdrawing is itself an entry: the red
+# stays, the withdrawal stands next to it with its reason, and neither can be
+# mistaken for a check that passed. Silent deletion is not offered at all — an
+# entry that vanished is worse than a wrong one, because nothing is left to say
+# it was ever there.
+cmd_drop() {
+    [ $# -ge 1 ] || die 'usage: redfirst drop "<the exact wording>" -- <why you are withdrawing it>'
+    claim=$(trim "$1"); shift
+    [ -n "$claim" ] || die 'empty claim - there is nothing to withdraw'
+    case $claim in
+        *'	'*) die 'no tabs in the claim: a tab separates journal fields' ;;
+    esac
+    [ "${1:-}" = "--" ] || die 'after the claim you need -- and the reason for withdrawing it'
+    shift
+    reason=$(trim "$*")
+    [ -n "$reason" ] || die 'no reason given - a withdrawal without one is a silent deletion by another door'
+    case $reason in
+        *'	'*) die 'no tabs in the reason: a tab separates journal fields' ;;
+    esac
+
+    _ledger_last_state "$claim"
+    if [ "$_ledger_state" != "red" ]; then
+        printf 'REFUSED: no open red with this wording is in the journal.\n'
+        printf 'Withdrawing applies to what is open. Nothing here matches, so nothing is written:\n'
+        printf 'otherwise this command would be a way to put any text into the journal at all.\n'
+        if [ -f "$LEDGER" ]; then
+            printf 'Open reds right now:\n'
+            _open_claims | sed 's/^/  /'
+        fi
+        exit 2
+    fi
+
+    today=$(date +%Y-%m-%d)
+    _ledger_append "$today" drop - "dropped: $reason" "$claim" "$(_code_at)"
+    printf 'redfirst drop: %s\n' "$claim"
+    printf 'Reason: %s\n' "$reason"
+    printf 'Withdrawn. Both entries stay in the journal - nothing was deleted, and this\n'
+    printf 'is NOT a green: closing it green again requires showing a red again first.\n'
+    exit 0
+}
+
 cmd_log() {
     if [ ! -f "$LEDGER" ]; then
         printf 'redfirst: the check journal is empty.\n'
@@ -816,7 +864,12 @@ cmd_log() {
             *)  _sfx=''; case $at in *+dirty) _sfx='+dirty' ;; esac
                 at="$(printf '%.7s' "$at")$_sfx" ;;
         esac
-        printf '  %s  %-6s exit %-3s %s\n' "$d" "$s" "$c" "$claim"
+        # A withdrawal ran no command, so it has no exit code. Printing
+        # "exit -" for it would be a field filled in for the sake of the column.
+        case $s in
+            drop) printf '  %s  %-6s %-8s %s\n' "$d" "$s" "" "$claim" ;;
+            *)    printf '  %s  %-6s exit %-3s %s\n' "$d" "$s" "$c" "$claim" ;;
+        esac
         printf '              %-14s %s\n' "$at" "$cmd"
     done < "$LEDGER"
     printf '\n'
@@ -826,6 +879,14 @@ cmd_log() {
         printf 'OPEN (shown red and not closed): %s\n' "$n"
         printf '%s\n' "$open" | sed 's/^/  /'
         exit 1
+    fi
+    # A withdrawal is not a green, and the closing line may not say it is. The
+    # two outcomes differ exactly the way "could not check" differs from "fine",
+    # and blurring them here would undo the point of recording the withdrawal.
+    ndrop=$(cut -f2 "$LEDGER" | grep -c '^drop$' || true)
+    if [ "$ndrop" != "0" ]; then
+        printf 'Nothing is open. Withdrawn with a reason: %s - those were never shown green.\n' "$ndrop"
+        exit 0
     fi
     printf 'Everything shown red has been closed green.\n'
     exit 0
@@ -1082,6 +1143,7 @@ redfirst - deterministic checkpoints for AI-assisted development.
   redfirst changed [<ref>]      what appeared and disappeared - where to start
   redfirst red "<what>" -- <cmd>   run it and record that the check FAILS
   redfirst green "<what>" -- <cmd> run it and record the move to green
+  redfirst drop "<what>" -- <why>  withdraw an entry, with the reason recorded
   redfirst log                  journal: what was shown red, what is closed
   redfirst due [--quiet]        overdue restore checks
   redfirst verified "<name>"    mark an asset verified today
@@ -1105,6 +1167,7 @@ case "$cmd" in
     changed)  cmd_changed "$@" ;;
     red)      _red_green red "$@" ;;
     green)    _red_green green "$@" ;;
+    drop)     cmd_drop "$@" ;;
     log)      cmd_log "$@" ;;
     due)      cmd_due "$@" ;;
     verified) cmd_verified "$@" ;;

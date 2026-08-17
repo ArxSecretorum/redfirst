@@ -178,6 +178,7 @@ cat <<'EOF'
 Manually:
   redfirst red "<what>" -- <cmd>   run it and record that the check FAILS
   redfirst green "<what>" -- <cmd> run it and record the move to green
+  redfirst drop "<what>" -- <why>  withdraw an entry, with the reason recorded
   redfirst log                     journal: what was shown red, what is closed
   redfirst wired <Symbol>          in how many files the name is in code
   redfirst samples <pattern>       a count together with what it counted
