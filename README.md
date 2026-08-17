@@ -118,10 +118,10 @@ Changed files with code: 2 (0 skipped)
 APPEARED - these names were absent from the comparison base. Is it wired in:
   redfirst wired BrandNewThing
 
-These are CANDIDATES, not a verdict. Names come from whole changed lines,
-so words from comments and local variables will be among them:
-telling them apart needs parsing, and parsing was removed on purpose.
-The list is where a check starts, not what it concludes.
+These are CANDIDATES, not a verdict. Names are taken from code positions
+only - strings and comments are stripped by the same pass wired uses - so
+local variables are still among them, but prose is not. Which of them is a
+thing worth checking is a question this list opens, not one it closes.
 ```
 
 Two questions answered by `grep`, and none that would need a parser:
@@ -129,9 +129,12 @@ Two questions answered by `grep`, and none that would need a parser:
 base; **disappeared** — the other way round. The first leads to `wired`, the
 second to `counter`.
 
-Two classes are filtered out: a name occurring **once** in the whole tree is a
+Three classes are filtered out: a name occurring **once** in the whole tree is a
 mention, not a thing; a name spread across **three files or more** is wired in
-beyond doubt. How many were dropped is printed — silently shortening the list
+beyond doubt; and a word that lives only in comments and strings is prose. The
+last one is decided by the classifier `wired` already uses — declarations are
+still not recognised, and that is a different thing from stripping comments.
+How many were dropped in each class is printed — silently shortening the list
 would read as "there was nothing else".
 
 ### `red` and `green` — what the tool is named after
@@ -299,9 +302,9 @@ auditable is the only honest basis of trust for a tool like this.
 
 ## The regression suite
 
-<!-- redfirst-count: cases=141 checks=296 -->
+<!-- redfirst-count: cases=142 checks=298 -->
 ```sh
-sh tests/run              # 141 cases across dash and bash — 296 checks
+sh tests/run              # 142 cases across dash and bash — 298 checks
 sh tests/run --self-check # breaks the tool on purpose, demands the suite notices
 ```
 
@@ -318,10 +321,10 @@ mark a suite carrying such cases is red forever and stops telling the known from
 a new regression. The mark is loud — the exit code is never 0 while one is open,
 and a marked case that **passes** exits 2 and demands the mark be removed.
 
-<!-- redfirst-count: checks=296 -->
+<!-- redfirst-count: checks=298 -->
 A case whose precondition cannot be created on this machine does not count as
 passed: it lands in a **NOT CHECKED** bucket, is named in the report, and the
-word "clean" becomes unavailable. Out of 296 checks, six are skipped on Windows
+word "clean" becomes unavailable. Out of 298 checks, six are skipped on Windows
 — `chmod 000` silently does nothing there, and neither an unreadable file nor a
 symlink can be made — and two are skipped on Linux, which has no Windows shell
 emulation for a hook to survive. Neither machine alone runs them all, and each

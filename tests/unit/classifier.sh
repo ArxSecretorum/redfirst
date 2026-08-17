@@ -190,5 +190,67 @@ import { Zed } from './x'
 Zed()
 EOF
 
+# ── файл без расширения ──────────────────────────────────────────────────────
+# Маркер комментария выбирался по расширению, а у `bin/redfirst` и `tests/run`
+# его нет — то есть вычистка была слабее всего ровно на тех файлах, которые в
+# этом проекте правятся чаще прочих. Первая строка говорит, что это за файл,
+# и читать её дешевле, чем гадать по имени.
+
+is 'без расширения: шебанг делает решётку комментарием' toolnoext Zed 'text=1' <<'EOF'
+#!/bin/sh
+# Zed is only ever mentioned in this comment
+foo=1
+EOF
+
+is 'без расширения: вызов остаётся кодом' toolnoext2 Zed 'code=1' <<'EOF'
+#!/bin/sh
+Zed --now
+EOF
+
+is 'без расширения и без шебанга решётка комментарием не становится' plainfile Zed 'code=1' <<'EOF'
+# Zed here is not a comment: nothing says this file is a script
+EOF
+
+is 'шебанг питона: решётка комментарий, heredoc не разбирается' pytool Zed 'text=1' <<'EOF'
+#!/usr/bin/env python3
+# Zed is documentation here
+EOF
+
+# В shell решётка начинает комментарий только в начале слова. `${x#pre}` — это
+# подстановка, и до 2026-08-18 разборщик резал по ней остаток строки: на самом
+# bin/redfirst от 1200 строк оставалось 211, а настоящие имена в код не
+# попадали. В питоне правило другое (`x=1#c` — комментарий), поэтому оно
+# включается только для shell.
+is 'shell: ${x#pre} не открывает комментарий' t.sh Zed 'code=1' <<'EOF'
+bar=${foo#pre}; Zed --now
+EOF
+
+is 'shell: решётка после пробела комментарий' t2.sh Zed 'text=1' <<'EOF'
+bar=1 # Zed mentioned in prose
+EOF
+
+is 'python: решётка вплотную к слову комментарий' t.py Zed 'text=1' <<'EOF'
+bar=1#Zed mentioned in prose
+EOF
+
+# `<<` искался в СЫРОЙ строке, поэтому упоминание сдвига в комментарии открывало
+# heredoc и глушило весь остаток файла. На самом bin/redfirst это делала строка
+# комментария «because << is a shift»: после неё в код не попадало ничего.
+is 'shell: << в комментарии heredoc не открывает' t3.sh Zed 'code=1' <<'EOF'
+foo=1 # here << is only mentioned in prose
+Zed --now
+EOF
+
+is 'shell: << в строке heredoc не открывает' t4.sh Zed 'code=1' <<'EOF'
+printf 'a << b\n'
+Zed --now
+EOF
+
+is 'shell: настоящий heredoc по-прежнему глушит' t5.sh Zed 'text=1' <<'EOF'
+cat <<END
+Zed lives inside the document
+END
+EOF
+
 [ "$fails" = 0 ] || { printf 'classifier: провалов %s\n' "$fails"; exit 1; }
 exit 0

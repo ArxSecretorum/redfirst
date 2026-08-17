@@ -241,7 +241,7 @@ CLASSIFIER='
     # in two passes gets both wrong: a // inside a string is not a comment, and
     # an apostrophe inside a comment is not a string.
     function strip(s,   out, n, i, c, c3, j, d, cj, p) {
-        out = ""; n = length(s); i = 1
+        out = ""; n = length(s); i = 1; hpos = 0
         while (i <= n) {
             if (st == "blk") {
                 p = index(substr(s, i), "*/")
@@ -278,12 +278,38 @@ CLASSIFIER='
             if (c3 == dq3 || c3 == sq3) { st = "str"; q = c3; i += 3; continue }
             if (c == dq || c == sq || c == bt) { st = "str"; q = c; i++; continue }
             if (m == "//" && substr(s, i, 2) == "/*") { st = "blk"; i += 2; continue }
-            if (substr(s, i, length(m)) == m) return out
+            if (substr(s, i, length(m)) == m) {
+                # In shell a # opens a comment only at the start of a word:
+                # ${var#prefix} is an expansion. Treating it as a comment cut
+                # the rest of the line, and on this very file that left 211
+                # lines of "code" out of twelve hundred. Python is the other
+                # way round - `x=1#c` IS a comment - so the rule is shell-only.
+                if (m == "#" && shf && i > 1) {
+                    p = substr(s, i - 1, 1)
+                    if (p != " " && p != "\t") { out = out c; i++; continue }
+                }
+                return out
+            }
+            # Position of the first << that is really code. Remembered here
+            # because only this scan knows what is a string and what is a
+            # comment; looking for << in the raw line made a comment saying
+            # "<< is a shift" open a heredoc and blank the rest of the file.
+            if (hpos == 0 && c == "<" && substr(s, i + 1, 1) == "<") hpos = i
             out = out c; i++
         }
         return out
     }
-    FNR == 1 { st = ""; q = ""; hw = ""; m = marker(FILENAME); shf = isshell(FILENAME) }
+    FNR == 1 {
+        st = ""; q = ""; hw = ""; m = marker(FILENAME); shf = isshell(FILENAME)
+        # A file with no extension is not a mystery - its first line says what
+        # it is. `bin/redfirst` and `tests/run` are exactly such files, and
+        # without this their # comments were never stripped: the pass was
+        # weakest on the files this project edits most. Read, not guessed.
+        if ($0 ~ /^#!/) {
+            if ($0 ~ /(dash|bash|zsh|ksh|[^a-z]sh)([[:space:]]|$)/) { m = "#"; shf = 1 }
+            else if ($0 ~ /(python|perl|ruby|awk|tclsh)/)           { m = "#"; shf = 0 }
+        }
+    }
     {
         raw = $0
         if (ENVIRON["RF_NOSTRIP"] == "1") code = raw
@@ -300,7 +326,7 @@ CLASSIFIER='
             # Shell heredoc. Restricted to shell files because << is a shift
             # operator everywhere else.
             if (shf && st == "") {
-                p = index(raw, "<<")
+                p = hpos
                 if (p > 0) {
                     w = substr(raw, p + 2)
                     sub(/^-/, "", w)
@@ -313,6 +339,11 @@ CLASSIFIER='
                 }
             }
         }
+        # Emit mode: hand back the code with strings and comments already gone,
+        # instead of classifying one symbol. `changed` needs the same stripping
+        # this program does for `wired`, and writing a second stripper next to a
+        # tested one is how the two drift apart.
+        if (ENVIRON["RF_EMIT"] == "1") { print code; next }
         if (code ~ ENVIRON["RF_SYM"]) {
             if (code ~ ENVIRON["RF_IMP"]) bucket = "imp"
             else                          bucket = "code"
@@ -570,6 +601,7 @@ cmd_changed() {
     git diff --name-only "$base" > "$TMP/ch.files" 2>/dev/null || : > "$TMP/ch.files"
     set --
     nsrc=0; nskip=0
+    : > "$TMP/ch.srcfiles"
     while IFS= read -r f; do
         [ -n "$f" ] || continue
         if is_noise "./$f" || ! _is_source_path "$f"; then
@@ -577,6 +609,7 @@ cmd_changed() {
         fi
         nsrc=$((nsrc + 1))
         set -- "$@" "$f"
+        printf '%s\n' "$f" >> "$TMP/ch.srcfiles"
     done < "$TMP/ch.files"
 
     # Неотслеживаемые файлы `git diff` не показывает вовсе, а «ассистент только
@@ -593,6 +626,7 @@ cmd_changed() {
         fi
         nsrc=$((nsrc + 1))
         printf '%s\n' "$f" >> "$TMP/ch.newfiles"
+        printf '%s\n' "$f" >> "$TMP/ch.srcfiles"
     done < "$TMP/ch.untracked"
 
     if [ "$nsrc" = "0" ]; then
@@ -613,6 +647,54 @@ cmd_changed() {
         cat "$f" >> "$TMP/ch.add" 2>/dev/null || true
     done < "$TMP/ch.newfiles"
 
+    # Слова из КОДОВЫХ позиций изменённых файлов — тем же разборщиком, что и в
+    # `wired`. Оговорка Д1 звучала так: слово из комментария встречается дважды
+    # в двух файлах, переживает оба отсева и встаёт в список рядом с настоящим
+    # именем. На первом прогоне на живом коммите таких было больше половины.
+    #
+    # Это НЕ возврат разбора синтаксиса: объявление по-прежнему не опознаётся.
+    # Вычищаются строки и комментарии — та часть, которая осталась после
+    # выброса `is_decl_re` именно потому, что работала.
+    set --
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        set -- "$@" "$f"
+    done < "$TMP/ch.srcfiles"
+    RF_SYM='.' RF_IMP="$import_re" RF_NOSTRIP=0 RF_EMIT=1 \
+    RF_DQ='"' RF_SQ=$(printf '\47') RF_BT='`' \
+    awk "$CLASSIFIER" "$@" 2>/dev/null > "$TMP/ch.codetext" || : > "$TMP/ch.codetext"
+
+    # То же самое для БАЗЫ сравнения: слово, пропавшее из комментария, — это не
+    # пропавшая вещь. Содержимое достаётся `git show`, расширение сохраняется в
+    # имени копии, а для файлов без расширения работает шебанг.
+    : > "$TMP/ch.baselist"
+    _bi=0
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        _bi=$((_bi + 1))
+        _bn=${f##*/}
+        case $_bn in
+            *.*) _bf="$TMP/base.$_bi.${_bn##*.}" ;;
+            *)   _bf="$TMP/base.$_bi" ;;
+        esac
+        if git show "$base:$f" > "$_bf" 2>/dev/null; then
+            printf '%s\n' "$_bf" >> "$TMP/ch.baselist"
+        else
+            rm -f "$_bf"        # новый файл базы не имеет — это не ошибка
+        fi
+    done < "$TMP/ch.srcfiles"
+    : > "$TMP/ch.basetext"
+    if [ -s "$TMP/ch.baselist" ]; then
+        set --
+        while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            set -- "$@" "$f"
+        done < "$TMP/ch.baselist"
+        RF_SYM='.' RF_IMP="$import_re" RF_NOSTRIP=0 RF_EMIT=1 \
+        RF_DQ='"' RF_SQ=$(printf '\47') RF_BT='`' \
+        awk "$CLASSIFIER" "$@" 2>/dev/null > "$TMP/ch.basetext" || : > "$TMP/ch.basetext"
+    fi
+
     _words() {   # файл -> отсортированный список слов
         tr -cs 'A-Za-z0-9_' '\n' < "$1" \
             | grep -E '^[A-Za-z_][A-Za-z0-9_]{3,}$' \
@@ -621,6 +703,29 @@ cmd_changed() {
     }
     _words "$TMP/ch.add" > "$TMP/ch.addw"
     _words "$TMP/ch.del" > "$TMP/ch.delw"
+    _words "$TMP/ch.codetext" > "$TMP/ch.codew"
+    _words "$TMP/ch.basetext" > "$TMP/ch.basew"
+
+    # Пустой разбор означает, что вычистка не отработала, а не что кода нет.
+    # Молча вычесть всё было бы худшим исходом из возможных: команда сказала бы
+    # «проверять нечего» ровно тогда, когда сама сломалась.
+    dropped_prose=0
+    if [ -s "$TMP/ch.codew" ]; then
+        comm -12 "$TMP/ch.addw" "$TMP/ch.codew" > "$TMP/ch.addw.code" 2>/dev/null \
+            || cp "$TMP/ch.addw" "$TMP/ch.addw.code"
+        dropped_prose=$(( $(grep -c . < "$TMP/ch.addw" || true) \
+                        - $(grep -c . < "$TMP/ch.addw.code" || true) ))
+        mv -f "$TMP/ch.addw.code" "$TMP/ch.addw"
+    else
+        warn 'the code/comment pass produced nothing - prose is NOT filtered out of the list below'
+    fi
+    if [ -s "$TMP/ch.basew" ]; then
+        comm -12 "$TMP/ch.delw" "$TMP/ch.basew" > "$TMP/ch.delw.code" 2>/dev/null \
+            || cp "$TMP/ch.delw" "$TMP/ch.delw.code"
+        dropped_prose=$(( dropped_prose + $(grep -c . < "$TMP/ch.delw" || true) \
+                        - $(grep -c . < "$TMP/ch.delw.code" || true) ))
+        mv -f "$TMP/ch.delw.code" "$TMP/ch.delw"
+    fi
 
     nadd=$(grep -c . < "$TMP/ch.addw" || true)
     ndel=$(grep -c . < "$TMP/ch.delw" || true)
@@ -682,13 +787,14 @@ cmd_changed() {
         printf '\n'
     fi
 
-    printf 'These are CANDIDATES, not a verdict. Names come from whole changed lines,\n'
-    printf 'so words from comments and local variables will be among them:\n'
-    printf 'telling them apart needs parsing, and parsing was removed on purpose.\n'
-    printf 'The list is where a check starts, not what it concludes.\n'
-    if [ "$((dropped_once + dropped_spread))" != "0" ]; then
+    printf 'These are CANDIDATES, not a verdict. Names are taken from code positions\n'
+    printf 'only - strings and comments are stripped by the same pass wired uses - so\n'
+    printf 'local variables are still among them, but prose is not. Which of them is a\n'
+    printf 'thing worth checking is a question this list opens, not one it closes.\n'
+    if [ "$((dropped_once + dropped_spread + dropped_prose))" != "0" ]; then
         printf 'Filtered out: %s occur once in the whole tree (a mention,\n' "$dropped_once"
-        printf 'not a thing), %s span three files or more (wired in beyond doubt).\n' "$dropped_spread"
+        printf 'not a thing), %s span three files or more (wired in beyond doubt),\n' "$dropped_spread"
+        printf '%s live only in comments and strings.\n' "$dropped_prose"
     fi
     if [ "$capped" != "0" ]; then
         printf 'WARNING: %s words in the change, showing the first %s of each side.\n' \
