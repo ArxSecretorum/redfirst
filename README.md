@@ -69,6 +69,7 @@ git clone https://github.com/ArxSecretorum/redfirst.git
 sh redfirst/install.sh /path/to/your/project
 ```
 
+<!-- redfirst-claim: installer-asks-nothing -->
 It asks nothing — there is no prompt anywhere in it. It detects the project
 type, creates `.redfirst/irreplaceable` from a template, writes the session-start
 hook into `.claude/settings.json`, and puts the rules for the assistant into
@@ -276,20 +277,31 @@ through Claude Code hooks, and in April a worm on PyPI planted a malicious
 for exactly the access you were recently attacked through, and we treat that
 accordingly:
 
-- everything executable is **one file**, `bin/redfirst`, readable in one sitting;
+<!-- redfirst-claim: one-file-runs-itself -->
+<!-- redfirst-claim: no-network -->
+<!-- redfirst-claim: installer-keeps-your-settings -->
+<!-- redfirst-claim: registry-holds-no-paths -->
+
+- the only file that ever runs **by itself** is `bin/redfirst`, one file,
+  readable in one sitting. `install.sh` and `tests/run` are the other two
+  scripts in here and you start both of them yourself;
 - no network, no dependencies, no self-update;
 - the installer does not edit an existing `settings.json` automatically — it
   prints what to add and leaves the decision to you;
 - the asset registry holds names and dates, never paths.
+
+Each of those four is checked by `tests/unit/claims.sh` rather than promised.
+The first one used to read "everything executable is one file", which was not
+true — three files carry the executable bit — and nothing could say so.
 
 Read `bin/redfirst` before installing. That is not a formality: short and
 auditable is the only honest basis of trust for a tool like this.
 
 ## The regression suite
 
-<!-- redfirst-count: cases=140 checks=292 -->
+<!-- redfirst-count: cases=140 checks=294 -->
 ```sh
-sh tests/run              # 140 cases across dash and bash — 292 checks
+sh tests/run              # 140 cases across dash and bash — 294 checks
 sh tests/run --self-check # breaks the tool on purpose, demands the suite notices
 ```
 
@@ -306,10 +318,10 @@ mark a suite carrying such cases is red forever and stops telling the known from
 a new regression. The mark is loud — the exit code is never 0 while one is open,
 and a marked case that **passes** exits 2 and demands the mark be removed.
 
-<!-- redfirst-count: checks=292 -->
+<!-- redfirst-count: checks=294 -->
 A case whose precondition cannot be created on this machine does not count as
 passed: it lands in a **NOT CHECKED** bucket, is named in the report, and the
-word "clean" becomes unavailable. Out of 292 checks, six are skipped on Windows
+word "clean" becomes unavailable. Out of 294 checks, six are skipped on Windows
 — `chmod 000` silently does nothing there, and neither an unreadable file nor a
 symlink can be made — and two are skipped on Linux, which has no Windows shell
 emulation for a hook to survive. Neither machine alone runs them all, and each
