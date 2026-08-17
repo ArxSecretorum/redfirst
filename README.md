@@ -81,20 +81,22 @@ list is the one part of this only you know.
 ### Proving the hook reaches you
 
 The installer proves the command runs. It cannot prove your harness will show
-what the command prints, and it says so rather than implying otherwise. If you
-want that proved instead of assumed, borrow an event you can trigger by hand:
+what the command prints, and it says so rather than implying otherwise. You can
+prove that half yourself, in one command: start a session and read the harness's
+own account of what it did with the hook.
 
 ```sh
-# temporarily, in .claude/settings.local.json — then delete it again
-"PostToolUse": [ { "hooks": [ { "type": "command", "command": "<the same command>" } ] } ]
+claude -p ok --output-format stream-json --verbose | tr ',' '\n' | grep -A6 hook_response
 ```
 
-Run anything, then look at what the command wrote. Here that answered four
-questions at once: project hooks do get executed, the edit was picked up with no
-restart, the hook ran from the project root, and it had a full `PATH`. The one
-step it cannot answer is whether `SessionStart` in particular puts that stderr
-in front of you — that one stays documented rather than measured, and the
-difference between those two words is what this whole tool is about.
+With something overdue in the registry you should see `"exit_code":1`, an empty
+`"stdout"`, the warning in `"stderr"` and `"outcome":"error"` — the path that
+gets surfaced rather than the one that gets swallowed. If instead the output is
+in `"stdout"` with `"exit_code":0`, it is being handed to the model as context
+and not to you, which is the arrangement this tool exists to replace.
+
+The check costs nothing. The hook runs before the model is called at all, so it
+answers even on an account with no credit left to reply with.
 
 ## Commands
 
