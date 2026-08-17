@@ -28,11 +28,33 @@ SOURCES="$CONFIG_DIR/sources"
 MAX_SYMBOL=200          # guards the quadratic blowup on absurd input
 TMP=""
 
-cleanup() { rm -rf "$TMP" 2>/dev/null || true; }
+cleanup() { [ -n "$TMP" ] && rm -rf "$TMP" 2>/dev/null; return 0; }
 trap cleanup EXIT INT TERM
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/redfirst.XXXXXX") || {
-    printf 'redfirst: could not create a temporary directory
+# PIPE and HUP are not in that list by default, and PIPE is not exotic: it
+# arrives every time the output is cut short — `redfirst counter … | head -1`,
+# `… | grep -q`. Without a trap the shell dies on the spot and the temporary
+# directory stays behind. Found by looking at the target machine: eight empty
+# /tmp/redfirst.* directories, two per nightly run. Under Git Bash it does not
+# happen at all, so nothing here could have shown it.
+#
+# The exit codes are the conventional 128 + signal, so a caller still sees that
+# the run was killed rather than finished.
+trap 'cleanup; exit 141' PIPE
+trap 'cleanup; exit 129' HUP
+# Sourced as a library, this file runs no subcommand and needs no scratch space
+# — see the REDFIRST_LIB guard at the bottom. Creating the directory anyway put
+# its removal at the mercy of the sourcing script: a unit test that sets its own
+# EXIT trap after `. redfirst` replaces the cleanup, and the directory stays.
+# That is precisely what happened, and it littered the target machine with two
+# directories per suite run. Not creating what is not needed removes the whole
+# class instead of the instance.
+if [ "${REDFIRST_LIB:-}" = "1" ]; then
+    TMP=""
+else
+    TMP=$(mktemp -d "${TMPDIR:-/tmp}/redfirst.XXXXXX") || {
+        printf 'redfirst: could not create a temporary directory
 ' >&2; exit 2; }
+fi
 
 # Deliberate defects, for the regression suite's self-check. A suite that
 # cannot be shown to go red proves nothing - the same "green proves nothing"
@@ -1077,7 +1099,10 @@ cmd_verified() {
     # concurrent runs used to lose records and append a phantom asset.
     lock="$CONFIG_DIR/.lock"
     mkdir "$lock" 2>/dev/null || die "another redfirst is editing the registry (remove $lock if it is not)"
-    trap 'rmdir "$lock" 2>/dev/null || true; rm -f "$ASSETS".new.* 2>/dev/null || true; cleanup' EXIT INT TERM
+    _vtrap='rmdir "$lock" 2>/dev/null || true; rm -f "$ASSETS".new.* 2>/dev/null || true; cleanup'
+    trap "$_vtrap" EXIT INT TERM
+    trap "$_vtrap; exit 141" PIPE
+    trap "$_vtrap; exit 129" HUP
     # Normalise here, in THIS process. 0.4.0 pointed this loop at a file that
     # only `due` creates, in `due`'s own temp directory, so `verified` failed on
     # every invocation, in every shell, while `due` kept advertising it in each
