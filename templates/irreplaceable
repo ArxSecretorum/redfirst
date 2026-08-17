@@ -1,16 +1,16 @@
-# Невосстановимые активы — то, чья потеря останавливает продукт.
+# Irreplaceable assets - the ones whose loss stops the product.
 #
-# Формат:  имя | дата последней проверки ВОССТАНОВЛЕНИЯ | период в днях
+# Format:  name | date RESTORING was last verified | period, days
 #
-# Дата — не когда сделали копию, а когда из копии восстановили и убедились,
-# что восстановленное работает. Копия, из которой ни разу не восстанавливали,
-# копией не является.
+# The date is not when the copy was made. It is when something was restored
+# FROM that copy and the restored thing was seen to work. A copy you have never
+# restored from is not a copy.
 #
-# Путей здесь нет намеренно: файл со списком «где лежат мои секреты» — это
-# карта. Хватает имени, чтобы вы поняли, о чём речь.
+# There are no paths here on purpose: a file listing where your secrets live is
+# a map in its own right. The name is enough for you to know what is meant.
 #
-# never — если восстановление ещё ни разу не проверялось.
+# never - if restoring has not been verified even once.
 
-# Ключ подписи приложений      | never      | 90
-# Ключ подписи лицензий        | never      | 90
-# Учётка для выкладки в магазин | never     | 180
+# App signing key          | never | 90
+# Licence signing key      | never | 90
+# Store publishing account | never | 180
