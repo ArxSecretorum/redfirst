@@ -31,7 +31,7 @@ unknown-command        ~ red   ~ 2 ~ unknown command      ~ -       ~ нетак
 version-flag           ~ green ~ 0 ~ redfirst             ~ -       ~ --version             ~ 2026-08-17: версия печатается
 
 # ── verified: правка реестра, продолжение 2026-08-17 ────────────────────────
-verified-keeps-fourth-field ~ green ~ 0 ~ out:заметка && !never ~ - ~ @sh mkdir -p .redfirst; printf 'K | never | 30 | заметка\n' > .redfirst/irreplaceable; sh "$RF" verified K >/dev/null; cat .redfirst/irreplaceable ~ 2026-08-17: четвёртое поле — свободная заметка владельца. Переписать строку и потерять её значит стереть то, ради чего человек её писал
+verified-keeps-fourth-field ~ green ~ 0 ~ out:a note && !never ~ - ~ @sh mkdir -p .redfirst; printf 'K | never | 30 | a note\n' > .redfirst/irreplaceable; sh "$RF" verified K >/dev/null; cat .redfirst/irreplaceable ~ 2026-08-17: четвёртое поле — свободная заметка владельца. Переписать строку и потерять её значит стереть то, ради чего человек её писал
 verified-releases-lock      ~ green ~ 0 ~ marked as verified ~ - ~ @sh mkdir -p .redfirst; printf 'K | never | 30\n' > .redfirst/irreplaceable; sh "$RF" verified K >/dev/null 2>&1; sh "$RF" verified K ~ 2026-08-17: замок снимается после успеха. Оставленный замок блокирует правку реестра навсегда, а снимать его руками никто не догадается
 
 # ── свои маски в .redfirst/sources ──────────────────────────────────────────
