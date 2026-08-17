@@ -147,15 +147,20 @@ auditable is the only honest basis of trust for a tool like this.
 ## Regression suite
 
 ```sh
-sh tests/run              # 103 cases across dash and bash — 212 checks
+sh tests/run              # 104 cases across dash and bash — 214 checks
 sh tests/run --self-check # breaks the tool on purpose, demands the suite notices
 ```
 
 A case whose precondition cannot be created on this machine does not count as
 passed: it lands in a **NOT CHECKED** bucket, is named in the report, and the
-word "clean" becomes unavailable. On Windows four checks out of 212 are skipped
-that way — `chmod 000` silently does nothing there, so an unreadable file cannot
-be made. The suite is only complete on Linux.
+word "clean" becomes unavailable. On Windows six checks out of 214 are skipped
+that way — `chmod 000` silently does nothing there, and neither an unreadable
+file nor a symlink can be made. The suite is only complete on Linux.
+
+On Raspberry Pi OS a full run takes **5.7 s** and the self-check 0.33 s. The
+same 214 checks take 168 s under Git Bash on Windows; the difference is entirely
+the price of spawning processes, so `ONLY=<glob>` is the tool of choice while
+editing.
 
 A case may be marked `red?` or `green?` — "the direction is right, the tool does
 not meet it yet". That is how a known open defect is written down: without the
