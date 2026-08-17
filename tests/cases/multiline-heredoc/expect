@@ -1,1 +1,1 @@
-red ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:files=2 && n:code=1 && n:text=1 && n:hits=1 && sum ~ wired deploy ~ 2026-08-17: heredoc не отслеживался; строка «use …» вдобавок попадала в импорты, а объявление shell-функции — в вызовы
+red ~ 1 ~ A SINGLE MENTION && n:files=2 && n:code=1 && n:text=1 && n:hits=1 && sum ~ wired deploy ~ 2026-08-17: heredoc не отслеживался; строка «use …» вдобавок попадала в импорты, а объявление shell-функции — в вызовы

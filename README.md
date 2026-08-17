@@ -1,282 +1,281 @@
 # redfirst
 
-**Детерминированные точки останова для разработки с ИИ.**
+**Deterministic checkpoints for AI-assisted development.**
 
-[English](README.en.md) · MIT · без зависимостей · ничего не отправляет наружу
+MIT · no dependencies · nothing leaves your machine
 
 ---
 
-Ассистент пишет код в десять раз быстрее человека. Практики, которыми этот код
-проверяли, за ним не поспели. Разрыв между тем, что написано, и тем, что
-проверено, получил в 2026 году имя — **Verification Gap**, — и статистику:
-в 45% образцов ИИ-кода находят уязвимость, а 63% разработчиков тратят на отладку
-сгенерированного кода больше времени, чем потратили бы на написание руками.
+An assistant writes code ten times faster than a human. The practices that used
+to check that code did not keep up. The gap between what is written and what is
+verified got a name in 2026 — the **Verification Gap** — and numbers: a
+vulnerability is found in 45% of AI-generated samples, and 63% of developers
+spend more time debugging generated code than they would have spent writing it.
 
-Ядро проблемы простое и неприятное: **тесты пишет тот же автор, что и код.**
-Если ассистент неверно понял задачу, он напишет тест, подтверждающий его
-непонимание, и тест будет зелёным. Зелёное перестало быть доказательством.
+The core of the problem is simple and unpleasant: **the tests are written by the
+same author as the code.** If the assistant misunderstood the task, it will
+write a test that confirms its misunderstanding, and the test will be green.
+Green stopped being proof.
 
-`redfirst` не пытается это исправить целиком. Одну проверку он выполняет сам,
-в шести отказывается верить на слово и о трёх напоминает.
+`redfirst` does not try to fix that whole. One check it performs itself, in six
+it refuses to take anyone's word, and about three it reminds.
 
-## Принцип
+## The principle
 
-> **Проверка засчитывается только если её результат можно оценить, не читая код.**
+> **A check counts only if its result can be judged without reading code.**
 
-«Я проверил, всё в порядке» — не результат. Число, три строки образца или
-переход красного в зелёное — результат. Отсюда и название: покажи, как оно
-падает, прежде чем называть это готовым.
+"I checked, it's fine" is not a result. A number, three sample lines, or a move
+from red to green is a result. Hence the name: show how it fails before calling
+it done.
 
-## Что делает
+## What it does
 
-Три уровня, и они не равны по силе. Мы их не смешиваем — именно потому, что
-смешать их проще всего.
+Three levels, and they are not equal in strength. We keep them apart precisely
+because they are the easiest thing to blur.
 
-**1. Исполняет харнесс. Запускать не нужно, пропустить нельзя:**
-
-| | |
-|---|---|
-| Просроченные проверки восстановления | печатаются при старте каждой сессии |
-
-Это всё. Одна строка — потому что автоматическая гарантия здесь ровно одна.
-
-**2. Не верит на слово. Запускать нужно вам, но соврать в ответе нельзя:**
+**1. Executed by the harness. Nothing to run, nothing to skip:**
 
 | | |
 |---|---|
-| «С чего вообще начать» | `changed` достаёт кандидатов из самого изменения, а не из слов ассистента |
-| «Показал, как падает» | `red` сам запускает команду и отказывается записывать красное, если она проходит |
-| «Починил» | `green` требует, чтобы красное с той же формулировкой уже лежало в журнале |
-| Мёртвый код | `wired` показывает, в скольких файлах вне тестов имя есть в коде; один — красный |
-| Кривой замер | `samples` не даёт назвать число без образцов того, что посчитано |
-| «Этого нигде нет» | `counter` ищет присутствие и прикладывает вывод |
+| Overdue restore checks | printed at the start of every session |
 
-**3. Напоминает — живёт в `CLAUDE.md`, соблюдение на совести ассистента:**
-дешёвая проверка идёт впереди теории о её ненужности; не создал ли замер то
-различие, на которое ссылается вывод; утверждение об отсутствии требует поиска
-присутствия.
+That is all. One row, because there is exactly one automatic guarantee here.
 
-Разница между уровнями принципиальная. Второй уровень не гарантирует, что
-проверку выполнят, — он гарантирует, что её результат нельзя подделать
-словами. Третий не гарантирует ничего.
+**2. Will not take your word. You have to run them, but the answer cannot be
+faked:**
 
-## Установка
+| | |
+|---|---|
+| "Where do I even start" | `changed` takes candidates from the change itself, not from what the assistant said |
+| "I showed how it fails" | `red` runs the command itself and refuses to record a red if it passes |
+| "Fixed it" | `green` requires a red with the same wording to be in the journal already |
+| Dead code | `wired` shows in how many non-test files the name occurs in code; one is red |
+| A crooked measurement | `samples` will not let a number be given without samples of what it counted |
+| "That is nowhere" | `counter` searches for presence and attaches the output |
+
+**3. Reminders — they live in `CLAUDE.md`, compliance is the assistant's to
+keep:** a cheap check comes before the theory that it is unnecessary; ask
+whether the measurement created the difference the conclusion rests on; a claim
+of absence requires a search for presence.
+
+The difference between the levels matters. The second level does not guarantee
+the check is run — it guarantees the result cannot be faked with words. The
+third guarantees nothing.
+
+## Install
 
 ```sh
 git clone https://github.com/ArxSecretorum/redfirst.git
-sh redfirst/install.sh /путь/к/вашему/проекту
+sh redfirst/install.sh /path/to/your/project
 ```
 
-Установщик определит тип проекта, предложит кандидатов в невосстановимые активы,
-создаст конфиг и пропишет хук старта сессии. Путей вы не пишете — только
-подтверждаете найденное и отвечаете на два вопроса.
+The installer detects the project type, proposes candidates for irreplaceable
+assets, creates the config and writes the session-start hook. You type no paths
+— you confirm what it found and answer two questions.
 
-## Команды
+## Commands
 
-### `changed` — с чего начать, когда имени вам никто не назвал
+### `changed` — where to start when nobody gave you a name
 
-Все остальные команды принимают символ, который надо знать заранее. А узнаёте вы
-его от ассистента — от той самой стороны, которую собираетесь проверить.
-Утверждение «почистил старый путь авторизации» проверить нечем: имени в нём нет.
+Every other command takes a symbol you have to know in advance. And you learn it
+from the assistant — from the very side you are about to check. The claim "I
+cleaned up the old auth path" cannot be checked: there is no name in it.
 
-<!-- redfirst-output: Это КАНДИДАТЫ, а не вердикт -->
+<!-- redfirst-output: These are CANDIDATES, not a verdict -->
 ```
 $ redfirst changed
-redfirst changed: что появилось и что исчезло
-Просканировано от: /путь/к/проекту
-Сравниваю с: HEAD
-Изменено файлов с кодом: 2 (пропущено 0)
+redfirst changed: what appeared and what disappeared
+Scanned from: /path/to/project
+Comparing against: HEAD
+Changed files with code: 2 (0 skipped)
 
-ПОЯВИЛОСЬ — этих имён в базе сравнения не было. Подключено ли:
+APPEARED - these names were absent from the comparison base. Is it wired in:
   redfirst wired BrandNewThing
 
-Это КАНДИДАТЫ, а не вердикт. Имена взяты из изменённых строк целиком,
-поэтому среди них будут слова из комментариев и локальные переменные:
-отделить их можно только разбором, а разбор отсюда выброшен намеренно.
-Список нужен как начало проверки, а не как её результат.
+These are CANDIDATES, not a verdict. Names come from whole changed lines,
+so words from comments and local variables will be among them:
+telling them apart needs parsing, and parsing was removed on purpose.
+The list is where a check starts, not what it concludes.
 ```
 
-Два вопроса, на которые отвечает `grep`, и ни одного, на который отвечал бы
-разбор синтаксиса: **появилось** — имя есть в изменённых строках и его нет во
-всей базе сравнения; **исчезло** — наоборот. Первое проверяется через `wired`,
-второе через `counter`.
+Two questions answered by `grep`, and none that would need a parser:
+**appeared** — the name is in the changed lines and nowhere in the comparison
+base; **disappeared** — the other way round. The first leads to `wired`, the
+second to `counter`.
 
-Отсеиваются два класса: имя, встречающееся во всём дереве **один раз**, — это
-упоминание, а не вещь; имя, разошедшееся по **трём и более файлам**, заведомо
-подключено. Сколько отсеяно — печатается: молчаливое сокращение списка читалось
-бы как «больше ничего и не было».
+Two classes are filtered out: a name occurring **once** in the whole tree is a
+mention, not a thing; a name spread across **three files or more** is wired in
+beyond doubt. How many were dropped is printed — silently shortening the list
+would read as "there was nothing else".
 
-### `red` и `green` — то, в честь чего инструмент назван
+### `red` and `green` — what the tool is named after
 
-Правило «сначала покажи, как оно падает» дольше всех оставалось единственным,
-которое инструмент не проверял: оно жило текстом и держалось на добросовестности
-того, кого проверяют. Теперь команду запускает он сам.
+"Show how it fails first" was the last rule the tool did not check: it lived as
+text and rested on the good faith of the party being checked. Now the tool runs
+the command itself.
 
-<!-- redfirst-output: Записано КРАСНЫМ -->
+<!-- redfirst-output: Recorded RED -->
 ```
-$ redfirst red "хук доходит до человека" -- sh tests/run
-redfirst red: хук доходит до человека
-Запускаю: sh tests/run
-Код возврата: 1. Последние строки вывода:
-  БЛОКЕРЫ (инструмент прозевал дефект)   1
-Записано КРАСНЫМ. Теперь это можно закрыть: redfirst green "хук доходит до человека" -- <та же команда>
+$ redfirst red "the hook reaches the human" -- sh run-the-hook.sh
+redfirst red: the hook reaches the human
+Running: sh run-the-hook.sh
+Exit code: 1. Last lines of output:
+  hook printed nothing
+Recorded RED. Close it with: redfirst green "the hook reaches the human" -- <the same command>
 ```
 
-Объявить красным то, что проходит, нельзя — записывать нечего. Закрыть зелёным
-то, у чего не было красного, тоже нельзя: зелёное само по себе ничего не
-доказывает, тесты писал тот же автор, что и код.
+You cannot declare something red that passes — there is nothing to record. You
+cannot close something green that never had a red: green on its own proves
+nothing, the tests were written by the same author as the code.
 
-`redfirst log` показывает журнал: что было объявлено сломанным, какого числа,
-какой командой и дошло ли до зелёного. Код возврата 1, пока хоть одно красное
-не закрыто. Это единственный накапливающийся артефакт: его открывает и читает
-человек, который код не читает.
+`redfirst log` shows the journal: what was declared broken, on what date, by
+which command, and whether it reached green. Exit code 1 while any red is still
+open. It is the one artefact that accumulates, and the one a person who does not
+read code can open and read.
 
-### `wired` — существует ли эта вещь на самом деле
+### `wired` — does this thing actually exist
 
-<!-- redfirst-output: ЕДИНСТВЕННОЕ УПОМИНАНИЕ во всём проекте -->
+<!-- redfirst-output: A SINGLE MENTION in the whole project -->
 ```
 $ redfirst wired DiagnosticRingLog
 redfirst wired "DiagnosticRingLog"
-Просканировано от: /путь/к/проекту
-  файлов с упоминанием  1
-  из них в коде         1
-  только вне кода       0
-  упоминаний в коде     1
-ЕДИНСТВЕННОЕ УПОМИНАНИЕ во всём проекте:
+Scanned from: /path/to/project
+  files mentioning it   1
+  of those, in code     1
+  outside code only     0
+  mentions in code      1
+A SINGLE MENTION in the whole project:
   ./src/main/kotlin/diag/DiagnosticRingLog.kt:10:class DiagnosticRingLog(
-Если это объявление — вещь мертва: её не называет никто, включая её саму.
-Если это вызов — объявление лежит вне просканированных масок.
+If that is the declaration, the thing is dead: nothing names it, itself included.
+If that is a call, the declaration lies outside the scanned masks.
 ```
 
-Код возврата 1. Вопрос, на который отвечает команда, — «в скольких файлах вне
-тестов это имя встречается в коде», а не «вызывается ли оно»: разбор синтаксиса
-провалился на шести формах объявления из семи и был выброшен. Строки и
-комментарии не в счёт — упоминание не есть использование.
+Exit code 1. The question it answers is "in how many non-test files does this
+name occur in code", not "is it called": parsing declarations failed on six
+forms out of seven and was thrown away. Strings and comments do not count — a
+mention is not a use. It says nothing about whether the code is correct.
 
-Реальный случай: 287 строк, шесть зелёных тестов, ноль вызовов. Шесть недель эти
-тесты числились в отчётности как покрытие. Гейт был зелёным — ловить было нечего.
+A real case: 287 lines, six green tests, zero callers. For six weeks those tests
+counted as coverage in status reports. The gate was green — there was nothing
+for it to catch.
 
-### `samples` — число вместе с тем, что оно посчитало
+### `samples` — a number together with what it counted
 
-<!-- redfirst-output: Образцы из начала, середины и конца -->
+<!-- redfirst-output: Samples from the start, the middle and the end -->
 ```
 $ redfirst samples "Thread("
-redfirst samples "Thread(": 27 совпадений
-Образцы из начала, середины и конца — сверьте, что посчитано именно то:
+redfirst samples "Thread(": 27 matches
+Samples from the start, the middle and the end - check this is what you meant to count:
   .../MainActivity.kt:1314:        Thread({
   .../MediaArtworkRepository.kt:191:  if (Thread.currentThread().isInterrupted) return
   .../BoundedSerialWorker.kt:36:      Thread(runnable, "$threadName-...").apply {
 ```
 
-Средняя строка — `Thread.currentThread()`, а не создание потока. Именно так
-рождается вывод о «26 бесхозных потоках», которых на деле десять. Образцы берутся
-из начала, середины и конца намеренно: первые три строки такой ошибки не покажут.
+The middle line is `Thread.currentThread()`, not a thread being created. That is
+how a confident finding about "26 ownerless threads" appears when there are ten.
+Samples are taken from the start, the middle and the end deliberately: the first
+three lines would not have shown that mistake.
 
-### `counter` — поиск того, чего якобы нет
+### `counter` — searching for what is claimed absent
 
-<!-- redfirst-output: Утверждение об отсутствии в этой формулировке неверно -->
+<!-- redfirst-output: The claim of absence, as worded, is false -->
 ```
 $ redfirst counter sanitize redact
-redfirst counter: ищу то, чего якобы нет.
+redfirst counter: searching for what is claimed absent (tests and vendor included).
+Scanned from: /path/to/project
   sanitize                     5
   redact                      10
-Найдено. Утверждение об отсутствии в этой формулировке неверно.
+Found. The claim of absence, as worded, is false.
 ```
 
-«Я не нашёл» и «этого нет» — разные утверждения. Второе требует поиска, который
-искал бы обратное, и его вывода рядом с утверждением.
+"I did not find it" and "it is not there" are different claims. The second one
+requires a search that would have found the opposite, and its output next to the
+claim.
 
-### `due` — что просрочено
+### `due` — what is overdue
 
-<!-- redfirst-output: восстановление НИ РАЗУ не проверялось -->
+<!-- redfirst-output: restoring it has NEVER been checked -->
 ```
 $ redfirst due
-  ! Ключ подписи приложений — восстановление НИ РАЗУ не проверялось
-  ! Ключ подписи лицензий — проверено 227 дн. назад, норма 90
-redfirst: 2 из 3 невосстановимых активов просрочено.
-Копия, из которой ни разу не восстанавливали, — не копия.
+  ! App signing key - restoring it has NEVER been checked
+  ! Licence signing key - checked 259 days ago, the limit is 90
+redfirst: 2 of 3 irreplaceable assets need attention.
+A copy you have never restored from is not a copy.
+Mark it after checking: redfirst verified "<name>"
 ```
 
-Запускается хуком при старте сессии. Смысл именно в автоматизме: риск, записанный
-в четырёх документах за пять дней и не выполненный ни разу, — не проблема памяти,
-а проблема приоритизации. Список активов хранится **без путей**: файл «где лежат
-мои секреты» сам по себе является картой.
+Run by the session-start hook. The point is the automatism: a risk written down
+in four documents over five days and acted on never is not a memory problem, it
+is a prioritisation problem. The asset list is stored **without paths**: a file
+titled "where my secrets live" is a map in its own right.
 
-## Чего он не делает
+## What it does not do
 
-Не делает код лучше. Не ловит логические ошибки в коде, который подключён и
-покрыт проходящими тестами. Не заменяет ни ревью, ни QA-сервисы, тестирующие
-поведение приложения, — он отвечает на другой вопрос: **подключено ли то, что
-написано, и подтверждено ли то, что заявлено.**
+It does not make code better. It does not catch logic errors in code that is
+wired in and covered by passing tests. It replaces neither review nor the QA
+services that test application behaviour — it answers a different question:
+**is what was written wired in, and is what was claimed confirmed.**
 
-И прямо: автоматически исполняется **одна** проверка из десяти. Шесть отказываются
-принять неверный ответ, но запустить их должны вы. Три — напоминания в текстовом
-файле, и ассистент может их не выполнить. Инструмент, обещающий больше, вводит
-в заблуждение.
+And plainly: **one** check out of ten is executed automatically. Six refuse to
+accept a wrong answer, but you have to run them. Three are reminders in a text
+file, and the assistant may not follow them. A tool that promises more is
+misleading you.
 
-## Про безопасность
+## About security
 
-`redfirst` ставит хук на старт сессии. В феврале 2026 через хуки Claude Code
-раскрыли RCE, а в апреле червь в PyPI внедрял вредоносный `SessionStart` — просто
-открытие проекта запускало полезную нагрузку. Мы просим у вас ровно тот доступ,
-которым вас недавно атаковали, и относимся к этому соответственно:
+`redfirst` installs a session-start hook. In February 2026 an RCE was disclosed
+through Claude Code hooks, and in April a worm on PyPI planted a malicious
+`SessionStart` — merely opening a project executed the payload. We are asking
+for exactly the access you were recently attacked through, and we treat that
+accordingly:
 
-- всё исполняемое — **один файл** `bin/redfirst`, читается за один присест;
-- никакой сети, никаких зависимостей, никакого самообновления;
-- установщик не правит существующий `settings.json` автоматически — печатает,
-  что дописать, и оставляет решение вам.
+- everything executable is **one file**, `bin/redfirst`, readable in one sitting;
+- no network, no dependencies, no self-update;
+- the installer does not edit an existing `settings.json` automatically — it
+  prints what to add and leaves the decision to you;
+- the asset registry holds names and dates, never paths.
 
-Прочитайте `bin/redfirst` перед установкой. Это не формальность: короткий и
-проверяемый — единственное честное основание доверия для такого инструмента.
+Read `bin/redfirst` before installing. That is not a formality: short and
+auditable is the only honest basis of trust for a tool like this.
 
-## Регрессионный набор
+## The regression suite
 
 ```sh
-sh tests/run              # 121 случай в dash и bash — 250 проверок
-sh tests/run --self-check # ломает инструмент и требует, чтобы набор покраснел
+sh tests/run              # 121 cases across dash and bash — 250 checks
+sh tests/run --self-check # breaks the tool on purpose, demands the suite notices
 ```
 
-Случай, чьё условие на этой машине не создаётся, не считается пройденным: он
-попадает в корзину **НЕ ПРОВЕРЕНО** и называется в отчёте, а слово «Чисто»
-становится недоступно. Под Windows так пропускаются шесть проверок из 250 —
-`chmod 000` там молча не действует, и ни нечитаемого файла, ни симлинка не
-создать. Полным набор бывает только на Linux.
+Built around the fact that not all failures are equal. Every case declares a
+direction: `red` means the tool **must** raise the alarm, `green` means it must
+stay quiet. A failing `red` case means the tool missed a defect and counts as a
+**blocker**; a failing `green` case means it complained for nothing and counts
+as noise. They are reported separately, because "3 failed" tells you nothing and
+"1 blocker, 2 noise" tells you everything.
 
-На Raspberry Pi OS полный прогон занимает **5,7 с**, самопроверка — 0,33 с.
-Под Git Bash на Windows те же 214 проверок идут 168 с; разница целиком в цене
-порождения процессов, поэтому при правках удобнее `ONLY=<маска>`.
+A case may be marked `red?` or `green?` — "the direction is right, the tool does
+not meet it yet". That is how a known open defect is written down: without the
+mark a suite carrying such cases is red forever and stops telling the known from
+a new regression. The mark is loud — the exit code is never 0 while one is open,
+and a marked case that **passes** exits 2 and demands the mark be removed.
 
-Случай может быть помечен `red?` или `green?` — «направление верное, инструмент
-его пока не выполняет». Так записываются известные незакрытые дефекты: без
-пометки набор с ними красный навсегда и перестаёт отличать известное от новой
-регрессии. Пометка громкая — код возврата никогда не 0, пока открыт хоть один,
-а помеченный случай, который **прошёл**, даёт код 2 и требование снять пометку.
+A case whose precondition cannot be created on this machine does not count as
+passed: it lands in a **NOT CHECKED** bucket, is named in the report, and the
+word "clean" becomes unavailable. On Windows six checks out of 250 are skipped
+that way — `chmod 000` silently does nothing there, and neither an unreadable
+file nor a symlink can be made. The suite is only complete on Linux.
 
-Устроен вокруг того, что провал провалу рознь. Каждый случай объявляет
-направление: `red` — инструмент **обязан** поднять тревогу, `green` — обязан
-промолчать. Провал `red` означает, что инструмент прозевал дефект, и считается
-**блокером**; провал `green` — что он заругался зря, и считается шумом. Сводка
-печатает их раздельно, потому что «3 упало» не говорит ничего, а «1 блокер,
-2 шума» говорит всё.
+Everything runs in two shells, and a divergence between them is its own failure
+class: the bashism `$((10#08))` was invisible under bash and killed `due` on
+every August date, and `/bin/sh` on Debian and Raspberry Pi OS is dash.
 
-Всё гоняется в двух оболочках, и расхождение между ними — отдельный класс
-отказа: башизм `$((10#08))` был невидим в bash и валил `due` на любой дате
-августа, а `/bin/sh` на Debian и Raspberry Pi OS — это dash.
+`--self-check` deliberately breaks the tool at six points and requires the suite
+to go red. A suite that cannot be shown failing proves nothing — the same "green
+proves nothing" this tool exists to fight, one level up.
 
-`--self-check` намеренно ломает инструмент в шести точках и требует, чтобы
-набор это заметил. Набор, который нельзя показать красным, не доказывает
-ничего — это та же «зелёное ничего не значит», этажом выше.
+On Raspberry Pi OS a full run takes about six seconds. The same checks take
+minutes under Git Bash on Windows; the difference is entirely the price of
+spawning processes, so `ONLY=<glob>` is the tool of choice while editing.
 
-У каждого случая проставлена дата и дефект, который он держит, так что файлы
-в `tests/cases/` заодно журнал инцидентов. Подробности — в `tests/SPEC.md`.
-
-## Происхождение
-
-Проверки не придуманы за столом. Каждая выросла из зафиксированного отказа в
-работающем коммерческом проекте: мёртвого модуля, прожившего шесть недель под
-видом покрытия; неверного замера, на котором построили вывод; утверждения об
-отсутствии, опубликованного без встречного поиска; ключа подписи, чья
-незаменимость была описана в четырёх документах и не устранена ни в одном.
-
-Автор — [Arx Secretorum](https://github.com/ArxSecretorum).
-Лицензия MIT.
+Every case carries the date and the defect it holds down, so the files in
+`tests/cases/` double as an incident log. Details in `tests/SPEC.md`, which is
+kept in Russian as a working document, as is `docs/DEBTS.md`.

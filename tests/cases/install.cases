@@ -7,11 +7,11 @@
 # Проверяется артефакт, а не рапорт. «Создан settings.json» — это слова
 # установщика о себе; содержимое файла — факт.
 
-install-refuses-self    ~ red   ~ 2 ~ укажите ваш проект ~ @kotlin ~ @sh sh "$INSTALL" "$RFROOT" ~ 2026-08-17: прежний guard сравнивал аргумент дословно, и `install.sh .` изнутри redfirst ставил инструмент в самого себя
+install-refuses-self    ~ red   ~ 2 ~ point this at your project ~ @kotlin ~ @sh sh "$INSTALL" "$RFROOT" ~ 2026-08-17: прежний guard сравнивал аргумент дословно, и `install.sh .` изнутри redfirst ставил инструмент в самого себя
 install-writes-hook     ~ green ~ 0 ~ out:SessionStart && out:due --quiet ~ @kotlin ~ @sh sh "$INSTALL" . >/dev/null 2>&1; cat .claude/settings.json ~ 2026-08-17: в чистом проекте хук обязан появиться в файле, а не только в рапорте
-install-hook-speaks     ~ red   ~ 1 ~ err:пуст ~ @kotlin ~ @sh sh "$INSTALL" . >/dev/null 2>&1; sh "$RF" due --quiet ~ 2026-08-17: ровно та команда, что попала в хук, обязана писать в STDERR и выходить ненулевым — иначе харнесс не покажет её никогда
+install-hook-speaks     ~ red   ~ 1 ~ err:is empty ~ @kotlin ~ @sh sh "$INSTALL" . >/dev/null 2>&1; sh "$RF" due --quiet ~ 2026-08-17: ровно та команда, что попала в хук, обязана писать в STDERR и выходить ненулевым — иначе харнесс не покажет её никогда
 install-writes-claude   ~ green ~ 0 ~ out:redfirst counter ~ @kotlin ~ @sh sh "$INSTALL" . >/dev/null 2>&1; cat CLAUDE.md ~ 2026-08-17: без правил для ассистента три проверки из шести не действуют
-install-idempotent      ~ green ~ 0 ~ уже прописан ~ @kotlin ~ @sh sh "$INSTALL" . >/dev/null 2>&1; sh "$INSTALL" . ~ 2026-08-17: повторный запуск обязан узнать свой хук по команде, а не по слову redfirst где-нибудь в настройках
+install-idempotent      ~ green ~ 0 ~ already in ~ @kotlin ~ @sh sh "$INSTALL" . >/dev/null 2>&1; sh "$INSTALL" . ~ 2026-08-17: повторный запуск обязан узнать свой хук по команде, а не по слову redfirst где-нибудь в настройках
 install-no-duplicate    ~ green ~ 0 ~ out:count=1 ~ @kotlin ~ @sh sh "$INSTALL" . >/dev/null 2>&1; sh "$INSTALL" . >/dev/null 2>&1; printf 'count=%s\n' "$(grep -c SessionStart .claude/settings.json)" ~ 2026-08-17: два запуска не должны давать два хука
 install-keeps-foreign   ~ green ~ 0 ~ out:PROBEKEY && !SessionStart ~ @kotlin ~ @sh mkdir -p .claude; printf '{"env":{"PROBEKEY":"1"}}' > .claude/settings.json; sh "$INSTALL" . >/dev/null 2>&1; cat .claude/settings.json ~ 2026-08-17: слить чужой JSON вслепую — сломать конфигурацию пользователя
-install-no-false-banner ~ red   ~ 0 ~ ХУК НЕ УСТАНОВЛЕН && !Работает само ~ @kotlin ~ @sh mkdir -p .claude; printf '{"env":{"PROBEKEY":"1"}}' > .claude/settings.json; sh "$INSTALL" . ~ 2026-08-17: баннер «Работает само» печатался безусловно, в том числе когда не подключено ничего
+install-no-false-banner ~ red   ~ 0 ~ THE HOOK IS NOT INSTALLED && !works on its own ~ @kotlin ~ @sh mkdir -p .claude; printf '{"env":{"PROBEKEY":"1"}}' > .claude/settings.json; sh "$INSTALL" . ~ 2026-08-17: баннер «Работает само» печатался безусловно, в том числе когда не подключено ничего

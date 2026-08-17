@@ -202,10 +202,10 @@ split_into() {
 _num=""
 report_num() {
     case $1 in
-        files) _lbl='файлов с упоминанием' ;;
-        code)  _lbl='из них в коде' ;;
-        text)  _lbl='только вне кода' ;;
-        hits)  _lbl='упоминаний в коде' ;;
+        files) _lbl='files mentioning it' ;;
+        code)  _lbl='of those, in code' ;;
+        text)  _lbl='outside code only' ;;
+        hits)  _lbl='mentions in code' ;;
         *)     _num=""; return 1 ;;
     esac
     # Anchored on the report block, not on the label alone: prose below the

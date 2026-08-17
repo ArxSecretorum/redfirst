@@ -7,7 +7,7 @@
 # 2026-08-17, вторая половина дня: оба вердикта верны. Пометки `?` сняты —
 # именно эти два случая были критерием приёмки замены классификатора.
 
-golden-extension-dead   ~ red   ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:files=1 && n:code=1 && n:hits=1 && sum ~ @golden ~ wired selectionTier ~ 2026-08-17: extension-функция `fun MediaController.selectionTier(` — объявление не опознавалось и шло в вызовы, инструмент печатал его под «Вызывается:». При счёте файлов опознавать нечего. Правда: мёртв
-golden-template-live    ~ green ~ 0 ~ ЖИВЁТ && n:files=3 && n:code=3 && n:hits=3 && sum ~ @golden ~ wired identityFingerprintSha256 ~ 2026-08-17: оба вызова внутри шаблонов строк Kotlin "${store.identityFingerprintSha256()}". Вычистка строк их съедала; теперь содержимое ${…} остаётся кодом. Правда: жив
-golden-ringlog-dead     ~ red   ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:files=1 && n:code=1 && n:hits=1 && sum ~ @golden ~ wired DiagnosticRingLog ~ 2026-08-17: мёртвый класс, 287 строк в оригинале. Контроль: был верен до замены, обязан остаться верным после
-golden-playback-live    ~ green ~ 0 ~ ЖИВЁТ && n:files=3 && n:code=3 && n:hits=4 && sum ~ @golden ~ wired PlaybackService ~ 2026-08-17: четыре упоминания в коде трёх файлов плюс три в комментариях. Контроль
+golden-extension-dead   ~ red   ~ 1 ~ A SINGLE MENTION && n:files=1 && n:code=1 && n:hits=1 && sum ~ @golden ~ wired selectionTier ~ 2026-08-17: extension-функция `fun MediaController.selectionTier(` — объявление не опознавалось и шло в вызовы, инструмент печатал его под «Вызывается:». При счёте файлов опознавать нечего. Правда: мёртв
+golden-template-live    ~ green ~ 0 ~ ALIVE && n:files=3 && n:code=3 && n:hits=3 && sum ~ @golden ~ wired identityFingerprintSha256 ~ 2026-08-17: оба вызова внутри шаблонов строк Kotlin "${store.identityFingerprintSha256()}". Вычистка строк их съедала; теперь содержимое ${…} остаётся кодом. Правда: жив
+golden-ringlog-dead     ~ red   ~ 1 ~ A SINGLE MENTION && n:files=1 && n:code=1 && n:hits=1 && sum ~ @golden ~ wired DiagnosticRingLog ~ 2026-08-17: мёртвый класс, 287 строк в оригинале. Контроль: был верен до замены, обязан остаться верным после
+golden-playback-live    ~ green ~ 0 ~ ALIVE && n:files=3 && n:code=3 && n:hits=4 && sum ~ @golden ~ wired PlaybackService ~ 2026-08-17: четыре упоминания в коде трёх файлов плюс три в комментариях. Контроль

@@ -31,7 +31,7 @@ TMP=""
 cleanup() { rm -rf "$TMP" 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/redfirst.XXXXXX") || {
-    printf 'redfirst: не удалось создать временный каталог
+    printf 'redfirst: could not create a temporary directory
 ' >&2; exit 2; }
 
 # Deliberate defects, for the regression suite's self-check. A suite that
@@ -74,7 +74,7 @@ source_patterns() {
     if [ -f "$SOURCES" ]; then
         pats=$(grep -v '^[[:space:]]*#' "$SOURCES" 2>/dev/null | grep -v '^[[:space:]]*$' || true)
         [ -n "$pats" ] && { printf '%s\n' "$pats"; return; }
-        warn "$SOURCES пуст или состоит из комментариев — использую автоопределение"
+        warn "$SOURCES is empty or all comments - falling back to auto-detection"
     fi
     found=""
     [ -f build.gradle.kts ] || [ -f build.gradle ] || [ -f settings.gradle.kts ] && found="*.kt *.java *.kts"
@@ -139,7 +139,7 @@ list_sources() {
 # in every report, and a project marker above the current directory is called out.
 scanned_root_note() {
     here=$(pwd)
-    printf 'Просканировано от: %s\n' "$here"
+    printf 'Scanned from: %s\n' "$here"
     root=$(git rev-parse --show-toplevel 2>/dev/null || true)
     if [ -n "$root" ]; then
         # Оба пути прогоняются через одну и ту же оболочку, а не сравниваются
@@ -151,7 +151,7 @@ scanned_root_note() {
         here_real=$(pwd -P)
         case "$here_real" in
             "$root_real") ;;
-            *) printf 'ВНИМАНИЕ: корень репозитория выше — %s. Здесь виден только его кусок.\n' "$root" ;;
+            *) printf 'WARNING: the repository root is higher up - %s. Only a slice of it is visible here.\n' "$root" ;;
         esac
     fi
 }
@@ -159,10 +159,10 @@ scanned_root_note() {
 file_list_or_die() {
     list_sources > "$TMP/list"
     if [ ! -s "$TMP/list" ]; then
-        printf 'redfirst: под маски не попал ни один файл.\n'
-        printf 'Определённые маски:\n'
+        printf 'redfirst: no file matched the source masks.\n'
+        printf 'Masks detected:\n'
         source_patterns | sed 's/^/  /'
-        printf 'Задайте свои в %s, по одной на строку.\n' "$SOURCES"
+        printf 'Set your own in %s, one per line.\n' "$SOURCES"
         exit 2
     fi
 }
@@ -306,8 +306,8 @@ CLASSIFIER='
 cmd_wired() {
     [ $# -ge 1 ] || die 'usage: redfirst wired <Symbol>'
     symbol="$1"
-    [ -n "$symbol" ] || die 'пустое имя символа'
-    [ "${#symbol}" -le "$MAX_SYMBOL" ] || die "имя длиннее $MAX_SYMBOL символов"
+    [ -n "$symbol" ] || die 'empty symbol name'
+    [ "${#symbol}" -le "$MAX_SYMBOL" ] || die "name longer than $MAX_SYMBOL characters"
     file_list_or_die
 
     esc=$(esc_ere "$symbol")
@@ -316,8 +316,8 @@ cmd_wired() {
     total=$(grep -c . < "$TMP/hits" || true)
 
     if [ "$total" = "0" ]; then
-        printf 'redfirst wired "%s": символ не встречается вообще (0 совпадений).\n' "$symbol"
-        printf 'Опечатка в имени или он вне просканированных масок — это НЕ вывод о мёртвом коде.\n'
+        printf 'redfirst wired "%s": the symbol does not occur at all (0 matches).\n' "$symbol"
+        printf 'A typo in the name, or it is outside the scanned masks. This is NOT a verdict about dead code.\n'
         exit 2
     fi
 
@@ -359,15 +359,15 @@ cmd_wired() {
 
     printf 'redfirst wired "%s"\n' "$symbol"
     scanned_root_note
-    printf '  файлов с упоминанием  %s\n' "$nall"
-    printf '  из них в коде         %s\n' "$ncode"
-    printf '  только вне кода       %s\n' "$ntext"
-    printf '  упоминаний в коде     %s\n' "$nhits"
+    printf '  files mentioning it   %s\n' "$nall"
+    printf '  of those, in code     %s\n' "$ncode"
+    printf '  outside code only     %s\n' "$ntext"
+    printf '  mentions in code      %s\n' "$nhits"
 
     if [ "$ncode" = "0" ]; then
-        printf 'В КОДЕ ИМЯ НЕ ВСТРЕЧАЕТСЯ НИГДЕ — только в строках, комментариях и импортах:\n'
+        printf 'THE NAME OCCURS NOWHERE IN CODE - only in strings, comments and imports:\n'
         grep -v "^code	" "$TMP/cls" | cut -f3 | head -n 5 | sed 's/^/  /'
-        printf 'Упоминание — не использование. Вещи нет в работающей системе.\n'
+        printf 'A mention is not a use. This thing is not in the running system.\n'
         exit 1
     fi
     if [ "$ncode" = "1" ]; then
@@ -376,27 +376,27 @@ cmd_wired() {
         # different words — a private helper is normal, a service nobody outside
         # calls is not — and the difference is countable without parsing syntax.
         if [ "$nhits" = "1" ]; then
-            printf 'ЕДИНСТВЕННОЕ УПОМИНАНИЕ во всём проекте:\n'
+            printf 'A SINGLE MENTION in the whole project:\n'
             grep "^code	" "$TMP/cls" | cut -f3 | sed 's/^/  /'
-            printf 'Если это объявление — вещь мертва: её не называет никто, включая её саму.\n'
-            printf 'Если это вызов — объявление лежит вне просканированных масок.\n'
+            printf 'If that is the declaration, the thing is dead: nothing names it, itself included.\n'
+            printf 'If that is a call, the declaration lies outside the scanned masks.\n'
         else
-            printf 'ТОЛЬКО ВНУТРИ СВОЕГО ФАЙЛА: %s упоминаний, все в одном файле.\n' "$nhits"
+            printf 'ONLY INSIDE ITS OWN FILE: %s mentions, all in one file.\n' "$nhits"
             grep "^code	" "$TMP/cls" | cut -f3 | head -n 8 | sed 's/^/  /'
-            printf 'За пределами этого файла имени нет. Для частного помощника это норма,\n'
-            printf 'для класса или сервиса — повод спросить, кто должен был его звать.\n'
+            printf 'Outside this file the name does not appear. For a private helper that is normal;\n'
+            printf 'for a class or a service it is a reason to ask who was supposed to call it.\n'
         fi
         if [ "$ntext" != "0" ]; then
-            printf 'Ещё упомянуто вне кода (в счёт не идёт):\n'
+            printf 'Also mentioned outside code (not counted):\n'
             grep -v "^code	" "$TMP/cls" | cut -f3 | head -n 3 | sed 's/^/  /'
         fi
         exit 1
     fi
-    printf 'ЖИВЁТ: имя встречается в коде %s файлов.\n' "$ncode"
+    printf 'ALIVE: the name occurs in code in %s files.\n' "$ncode"
     grep "^code	" "$TMP/cls" | cut -f3 | head -n 8 | sed 's/^/  /'
     # Без существительного: «3 упоминания» и «5 упоминаний» — разные формы,
     # а согласовывать числительное в shell дороже, чем оно стоит.
-    [ "$nhits" -gt 8 ] && printf '  … и ещё %s\n' "$((nhits - 8))"
+    [ "$nhits" -gt 8 ] && printf '  … and %s more\n' "$((nhits - 8))"
     exit 0
 }
 
@@ -414,14 +414,14 @@ cmd_samples() {
     printf '' | grep -E -- "$pattern" >/dev/null 2>&1
     rc=$?
     set -e
-    [ "$rc" -gt 1 ] && die "неверное регулярное выражение: $pattern"
+    [ "$rc" -gt 1 ] && die "not a valid regular expression: $pattern"
     grep_sources "$pattern" > "$TMP/hits" 2>/dev/null || true
     count=$(grep -c . < "$TMP/hits" || true)
-    printf 'redfirst samples "%s": %s совпадений\n' "$pattern" "$count"
+    printf 'redfirst samples "%s": %s matches\n' "$pattern" "$count"
     [ "$count" = "0" ] && exit 1
     # First / middle / last, not the first three: the miscount this exists for
     # hid in the tail, and three consecutive lines from the top confirmed it.
-    printf 'Образцы из начала, середины и конца — сверьте, что посчитано именно то:\n'
+    printf 'Samples from the start, the middle and the end - check this is what you meant to count:\n'
     if [ "$count" -le 3 ]; then
         sed 's/^/  /' "$TMP/hits"
     else
@@ -437,7 +437,7 @@ cmd_samples() {
 
 cmd_counter() {
     [ $# -ge 1 ] || die 'usage: redfirst counter <term> [term...]'
-    printf 'redfirst counter: ищу то, чего якобы нет (включая тесты и vendor).\n'
+    printf 'redfirst counter: searching for what is claimed absent (tests and vendor included).\n'
     scanned_root_note
     any=0
     for term in "$@"; do
@@ -453,12 +453,12 @@ cmd_counter() {
         status=$?
         set -e
         if [ "$status" -gt 1 ]; then
-            printf '  %-28s ОШИБКА ПОИСКА — отсутствие НЕ подтверждено\n' "$term"
+            printf '  %-28s SEARCH FAILED - absence is NOT confirmed\n' "$term"
             [ -s "$TMP/gerr" ] && head -n 2 "$TMP/gerr" | sed 's/^/      /'
             any=2; continue
         fi
         if [ -s "$TMP/gerr" ]; then
-            printf '  %-28s часть путей не прочитана — отсутствие НЕ подтверждено\n' "$term"
+            printf '  %-28s some paths unread - absence is NOT confirmed\n' "$term"
             head -n 2 "$TMP/gerr" | sed 's/^/      /'
             any=2; continue
         fi
@@ -470,12 +470,12 @@ cmd_counter() {
         fi
     done
     if [ "$any" = "2" ]; then
-        printf 'Поиск завершился ошибкой. Утверждать отсутствие нельзя.\n'; exit 2
+        printf 'The search itself failed. Absence cannot be claimed.\n'; exit 2
     fi
     if [ "$any" = "1" ]; then
-        printf 'Найдено. Утверждение об отсутствии в этой формулировке неверно.\n'; exit 1
+        printf 'Found. The claim of absence, as worded, is false.\n'; exit 1
     fi
-    printf 'Не найдено. Приложите этот вывод к утверждению об отсутствии.\n'
+    printf 'Not found. Attach this output to the claim of absence.\n'
     exit 0
 }
 
@@ -526,12 +526,12 @@ _is_source_path() {
 
 cmd_changed() {
     base=${1:-HEAD}
-    git rev-parse --git-dir >/dev/null 2>&1 || die 'не git-репозиторий: сравнивать не с чем'
-    git rev-parse --verify --quiet "$base" >/dev/null 2>&1 || die "не найдена точка сравнения: $base"
+    git rev-parse --git-dir >/dev/null 2>&1 || die 'not a git repository: nothing to compare against'
+    git rev-parse --verify --quiet "$base" >/dev/null 2>&1 || die "comparison point not found: $base"
 
-    printf 'redfirst changed: что появилось и что исчезло\n'
+    printf 'redfirst changed: what appeared and what disappeared\n'
     scanned_root_note
-    printf 'Сравниваю с: %s\n' "$base"
+    printf 'Comparing against: %s\n' "$base"
 
     git diff --name-only "$base" > "$TMP/ch.files" 2>/dev/null || : > "$TMP/ch.files"
     set --
@@ -562,11 +562,11 @@ cmd_changed() {
     done < "$TMP/ch.untracked"
 
     if [ "$nsrc" = "0" ]; then
-        printf 'Изменённых файлов с исходным кодом нет (пропущено %s: тесты, сборка, не-код).\n' "$nskip"
-        printf 'Проверять нечего — это НЕ вывод о том, что изменение безопасно.\n'
+        printf 'No changed files contain source code (%s skipped: tests, build output, non-code).\n' "$nskip"
+        printf 'Nothing to check here. This is NOT a verdict that the change is safe.\n'
         exit 2
     fi
-    printf 'Изменено файлов с кодом: %s (пропущено %s)\n\n' "$nsrc" "$nskip"
+    printf 'Changed files with code: %s (%s skipped)\n\n' "$nsrc" "$nskip"
 
     # Кавыченные позиционные параметры, а не $(cat): путь с пробелом распадался
     # на два несуществующих, и та же ошибка уже стоила `wired` целого вердикта.
@@ -638,31 +638,31 @@ cmd_changed() {
     ngone=$(grep -c . < "$TMP/ch.gone" || true)
 
     if [ "$nnew" != "0" ]; then
-        printf 'ПОЯВИЛОСЬ — этих имён в базе сравнения не было. Подключено ли:\n'
+        printf 'APPEARED - these names were absent from the comparison base. Is it wired in:\n'
         while IFS= read -r w; do printf '  redfirst wired %s\n' "$w"; done < "$TMP/ch.new"
         printf '\n'
     fi
     if [ "$ngone" != "0" ]; then
-        printf 'ИСЧЕЗЛО — этих имён в текущем состоянии нет. Не осталось ли ссылок:\n'
+        printf 'DISAPPEARED - these names are absent now. Any references left:\n'
         while IFS= read -r w; do printf '  redfirst counter %s\n' "$w"; done < "$TMP/ch.gone"
         printf '\n'
     fi
 
-    printf 'Это КАНДИДАТЫ, а не вердикт. Имена взяты из изменённых строк целиком,\n'
-    printf 'поэтому среди них будут слова из комментариев и локальные переменные:\n'
-    printf 'отделить их можно только разбором, а разбор отсюда выброшен намеренно.\n'
-    printf 'Список нужен как начало проверки, а не как её результат.\n'
+    printf 'These are CANDIDATES, not a verdict. Names come from whole changed lines,\n'
+    printf 'so words from comments and local variables will be among them:\n'
+    printf 'telling them apart needs parsing, and parsing was removed on purpose.\n'
+    printf 'The list is where a check starts, not what it concludes.\n'
     if [ "$((dropped_once + dropped_spread))" != "0" ]; then
-        printf 'Отсеяно: %s встречаются во всём дереве по одному разу (упоминание,\n' "$dropped_once"
-        printf 'а не вещь), %s разошлись по трём и более файлам (заведомо подключены).\n' "$dropped_spread"
+        printf 'Filtered out: %s occur once in the whole tree (a mention,\n' "$dropped_once"
+        printf 'not a thing), %s span three files or more (wired in beyond doubt).\n' "$dropped_spread"
     fi
     if [ "$capped" != "0" ]; then
-        printf 'ВНИМАНИЕ: слов в изменении %s, показаны первые %s с каждой стороны.\n' \
+        printf 'WARNING: %s words in the change, showing the first %s of each side.\n' \
                "$capped" "$_CHANGED_MAX"
-        printf 'Список неполон — сузьте сравнение до одного коммита.\n'
+        printf 'The list is incomplete - narrow the comparison to a single commit.\n'
     fi
     [ "$((nnew + ngone))" = "0" ] && {
-        printf 'Ни одного нового и ни одного исчезнувшего имени — проверять нечего.\n'
+        printf 'No new and no disappeared names - nothing to check.\n'
         exit 0
     }
     exit 1
@@ -723,34 +723,34 @@ _open_claims() {
 
 _red_green() {
     want=$1; shift
-    [ $# -ge 1 ] || die "usage: redfirst $want \"<что проверяем>\" -- <команда>"
+    [ $# -ge 1 ] || die "usage: redfirst $want \"<what you are checking>\" -- <command>"
     claim=$(trim "$1"); shift
-    [ -n "$claim" ] || die 'пустое утверждение — journal записью без имени бесполезен'
+    [ -n "$claim" ] || die 'empty claim - a journal entry with no name is useless'
     case $claim in
-        *'	'*) die 'в утверждении не должно быть табуляции: она разделяет поля журнала' ;;
+        *'	'*) die 'no tabs in the claim: a tab separates journal fields' ;;
     esac
-    [ "${1:-}" = "--" ] || die "после утверждения нужен -- и команда, которая проверяет"
+    [ "${1:-}" = "--" ] || die "after the claim you need -- and the command that checks it"
     shift
-    [ $# -ge 1 ] || die 'после -- не указана команда'
+    [ $# -ge 1 ] || die 'no command given after --'
 
     printf 'redfirst %s: %s\n' "$want" "$claim"
-    printf 'Запускаю: %s\n' "$*"
+    printf 'Running: %s\n' "$*"
     set +e
     "$@" > "$TMP/rg" 2>&1
     rc=$?
     set -e
-    printf 'Код возврата: %s. Последние строки вывода:\n' "$rc"
+    printf 'Exit code: %s. Last lines of output:\n' "$rc"
     tail -n 6 "$TMP/rg" | sed 's/^/  /'
 
     today=$(date +%Y-%m-%d)
     if [ "$want" = "red" ]; then
         if [ "$rc" = "0" ]; then
-            printf 'ОТКАЗ: команда прошла успешно, а вы объявили её красной.\n'
-            printf 'Записывать нечего — непройденной проверки не было.\n'
+            printf 'REFUSED: the command succeeded, and you declared it red.\n'
+            printf 'Nothing to record: there was no failing check.\n'
             exit 2
         fi
         _ledger_append "$today" red "$rc" "$*" "$claim"
-        printf 'Записано КРАСНЫМ. Теперь это можно закрыть: redfirst green "%s" -- <та же команда>\n' "$claim"
+        printf 'Recorded RED. Close it with: redfirst green "%s" -- <the same command>\n' "$claim"
         exit 0
     fi
 
@@ -760,45 +760,45 @@ _red_green() {
     # заметить его пропажу.
     _broken redgreen && _ledger_state=red
     if [ "$_ledger_state" != "red" ]; then
-        printf 'ОТКАЗ: красного с таким утверждением в журнале нет.\n'
-        printf 'Зелёное без красного ничего не доказывает — сначала покажите, как оно падает.\n'
+        printf 'REFUSED: no red with this wording is in the journal.\n'
+        printf 'Green without a red proves nothing. Show how it fails first.\n'
         if [ -f "$LEDGER" ]; then
-            printf 'Открытые красные сейчас:\n'
+            printf 'Open reds right now:\n'
             _open_claims | sed 's/^/  /'
         fi
         exit 2
     fi
     if [ "$rc" != "0" ]; then
-        printf 'Ещё красное (код %s). В журнал не пишу: перехода не было.\n' "$rc"
+        printf 'Still red (exit %s). Not recording: there was no transition.\n' "$rc"
         exit 1
     fi
     _ledger_append "$today" green 0 "$*" "$claim"
-    printf 'Записано ЗЕЛЁНЫМ. Переход красное → зелёное показан и записан.\n'
+    printf 'Recorded GREEN. The red-to-green transition is shown and recorded.\n'
     exit 0
 }
 
 cmd_log() {
     if [ ! -f "$LEDGER" ]; then
-        printf 'redfirst: журнал проверок пуст.\n'
-        printf 'Ни одна проверка ещё не показана красной. Начните с:\n'
-        printf '  redfirst red "<что проверяем>" -- <команда>\n'
+        printf 'redfirst: the check journal is empty.\n'
+        printf 'No check has been shown red yet. Start with:\n'
+        printf '  redfirst red "<what you are checking>" -- <command>\n'
         exit 2
     fi
-    printf 'redfirst: журнал проверок (%s)\n\n' "$LEDGER"
+    printf 'redfirst: check journal (%s)\n\n' "$LEDGER"
     while IFS='	' read -r d s c cmd claim || [ -n "$claim" ]; do
         [ -n "$claim" ] || continue
-        printf '  %s  %-6s код %-3s %s\n' "$d" "$s" "$c" "$claim"
+        printf '  %s  %-6s exit %-3s %s\n' "$d" "$s" "$c" "$claim"
         printf '                          %s\n' "$cmd"
     done < "$LEDGER"
     printf '\n'
     open=$(_open_claims)
     if [ -n "$open" ]; then
         n=$(printf '%s\n' "$open" | grep -c .)
-        printf 'ОТКРЫТО (показаны красными и не закрыты): %s\n' "$n"
+        printf 'OPEN (shown red and not closed): %s\n' "$n"
         printf '%s\n' "$open" | sed 's/^/  /'
         exit 1
     fi
-    printf 'Все показанные красными закрыты зелёным.\n'
+    printf 'Everything shown red has been closed green.\n'
     exit 0
 }
 
@@ -877,15 +877,15 @@ cmd_due() {
     # every failure mode too, so a missing or unreadable registry made the
     # session-start hook print nothing at all — indistinguishable from "clean".
     if [ ! -e "$ASSETS" ]; then
-        die "нет $ASSETS. Запустите: redfirst init"
+        die "no $ASSETS. Run: redfirst init"
     fi
-    [ -f "$ASSETS" ] || die "$ASSETS не обычный файл"
-    [ -r "$ASSETS" ] || die "$ASSETS не читается"
+    [ -f "$ASSETS" ] || die "$ASSETS is not a regular file"
+    [ -r "$ASSETS" ] || die "$ASSETS is not readable"
     # Today, and the whole file's line endings, normalised once instead of per
     # line. A lone CR is turned into a newline too: a registry saved with classic
     # Mac endings used to arrive as one giant line and every asset vanished.
     today=$(date +%Y-%m-%d)
-    parse_date "$today" || die "не удалось разобрать сегодняшнюю дату ($today)"
+    parse_date "$today" || die "could not parse today's date ($today)"
     now_days=$_days
     tr '\r' '\n' < "$ASSETS" > "$TMP/assets.norm"
     bad=0; total=0; out="$TMP/out"; : > "$out"
@@ -915,28 +915,28 @@ cmd_due() {
         name=$_f1; verified=$_f2; period=$_f3
 
         if [ -z "$name" ]; then
-            printf '  ! строка без имени: "%s" — не разобрана\n' "$line" >> "$out"; bad=$((bad+1)); continue
+            printf '  ! line with no name: "%s" - not parsed\n' "$line" >> "$out"; bad=$((bad+1)); continue
         fi
         case "$period" in
-            ''|*[!0-9]*) printf '  ! %s — период "%s" не число, проверка не действует\n' "$name" "$period" >> "$out"; bad=$((bad+1)); continue ;;
+            ''|*[!0-9]*) printf '  ! %s - period "%s" is not a number, the check does not apply\n' "$name" "$period" >> "$out"; bad=$((bad+1)); continue ;;
         esac
-        dec "$period"; [ "$_d" -gt 0 ] 2>/dev/null || { printf '  ! %s — период должен быть больше нуля\n' "$name" >> "$out"; bad=$((bad+1)); continue; }
+        dec "$period"; [ "$_d" -gt 0 ] 2>/dev/null || { printf '  ! %s - the period must be greater than zero\n' "$name" >> "$out"; bad=$((bad+1)); continue; }
         period=$_d
 
         case $verified in
             [Nn][Ee][Vv][Ee][Rr]|'')
-                printf '  ! %s — восстановление НИ РАЗУ не проверялось\n' "$name" >> "$out"; bad=$((bad+1)); continue ;;
+                printf '  ! %s - restoring it has NEVER been checked\n' "$name" >> "$out"; bad=$((bad+1)); continue ;;
         esac
         if ! parse_date "$verified"; then
-            printf '  ! %s — дата "%s" не разобрана (нужен формат ГГГГ-ММ-ДД)\n' "$name" "$verified" >> "$out"; bad=$((bad+1)); continue
+            printf '  ! %s - date "%s" not parsed (format must be YYYY-MM-DD)\n' "$name" "$verified" >> "$out"; bad=$((bad+1)); continue
         fi
         vep=$_days
         if [ "$vep" -gt "$now_days" ]; then
-            printf '  ! %s — дата "%s" в будущем, вероятно опечатка\n' "$name" "$verified" >> "$out"; bad=$((bad+1)); continue
+            printf '  ! %s - date "%s" is in the future, probably a typo\n' "$name" "$verified" >> "$out"; bad=$((bad+1)); continue
         fi
         age=$(( now_days - vep ))
         if [ "$age" -gt "$period" ]; then
-            printf '  ! %s — проверено %s дн. назад, норма %s\n' "$name" "$age" "$period" >> "$out"; bad=$((bad+1))
+            printf '  ! %s - checked %s days ago, the limit is %s\n' "$name" "$age" "$period" >> "$out"; bad=$((bad+1))
         fi
     done < "$TMP/assets.norm"
 
@@ -953,36 +953,36 @@ cmd_due() {
     if [ "$total" = "0" ]; then
         # An empty registry is the state right after installation, and silence
         # here is indistinguishable from "everything checked".
-        say 'redfirst: список невосстановимых активов пуст — впишите свои в .redfirst/irreplaceable.'
+        say 'redfirst: the list of irreplaceable assets is empty - add yours to .redfirst/irreplaceable.'
         exit 1
     fi
     if [ "$bad" -gt 0 ]; then
         if _broken quiet; then cat "$out"
         elif [ "$quiet" = 1 ]; then cat "$out" >&2
         else cat "$out"; fi
-        say "redfirst: $bad из $total невосстановимых активов требует внимания."
-        say 'Копия, из которой ни разу не восстанавливали, — не копия.'
-        say 'Отметить после проверки: redfirst verified "<имя>"'
+        say "redfirst: $bad of $total irreplaceable assets need attention."
+        say 'A copy you have never restored from is not a copy.'
+        say 'Mark it after checking: redfirst verified "<name>"'
         exit 1
     fi
-    [ "$quiet" = 1 ] || printf 'redfirst: все %s активов проверены в срок.\n' "$total"
+    [ "$quiet" = 1 ] || printf 'redfirst: all %s assets checked within their period.\n' "$total"
     exit 0
 }
 
 # ── verified ─────────────────────────────────────────────────────────────────
 
 cmd_verified() {
-    [ $# -ge 1 ] || die 'usage: redfirst verified "<имя>"'
+    [ $# -ge 1 ] || die 'usage: redfirst verified "<name>"'
     name=$(trim "$1")
-    [ -n "$name" ] || die 'пустое имя'
-    [ -f "$ASSETS" ] || die "нет $ASSETS"
+    [ -n "$name" ] || die 'empty name'
+    [ -f "$ASSETS" ] || die "no $ASSETS"
     today=$(date +%Y-%m-%d)
     # Lock, and write the replacement NEXT TO the registry rather than in $TMP:
     # mv is atomic only within one filesystem, and $TMP is often another device,
     # so the previous cp left a window where the file was half-written. Two
     # concurrent runs used to lose records and append a phantom asset.
     lock="$CONFIG_DIR/.lock"
-    mkdir "$lock" 2>/dev/null || die "другой redfirst уже правит реестр (снимите $lock, если это не так)"
+    mkdir "$lock" 2>/dev/null || die "another redfirst is editing the registry (remove $lock if it is not)"
     trap 'rmdir "$lock" 2>/dev/null || true; rm -f "$ASSETS".new.* 2>/dev/null || true; cleanup' EXIT INT TERM
     # Normalise here, in THIS process. 0.4.0 pointed this loop at a file that
     # only `due` creates, in `due`'s own temp directory, so `verified` failed on
@@ -1001,7 +1001,7 @@ cmd_verified() {
             # unparseable period erased the only evidence that the line was broken
             # and turned a red `due` into a green one.
             case "$period" in
-                ''|*[!0-9]*) die "период \"$period\" у актива \"$name\" не разобран — почините строку вручную" ;;
+                ''|*[!0-9]*) die "period \"$period\" of asset \"$name\" is not parsed - fix the line by hand" ;;
             esac
             rest=$(printf '%s' "$line" | cut -s -d'|' -f4-)
             if [ -n "$rest" ]; then
@@ -1014,9 +1014,9 @@ cmd_verified() {
             printf '%s\n' "$line" >> "$tmp"
         fi
     done < "$TMP/verify.norm"
-    [ "$found" = 1 ] || { rm -f "$tmp"; die "актива с именем \"$name\" в $ASSETS нет"; }
+    [ "$found" = 1 ] || { rm -f "$tmp"; die "no asset named \"$name\" in $ASSETS"; }
     mv -f "$tmp" "$ASSETS"
-    printf 'redfirst: "%s" отмечен проверенным %s.\n' "$name" "$today"
+    printf 'redfirst: "%s" marked as verified on %s.\n' "$name" "$today"
 }
 
 # ── init ─────────────────────────────────────────────────────────────────────
@@ -1024,44 +1024,44 @@ cmd_verified() {
 cmd_init() {
     mkdir -p "$CONFIG_DIR"
     printf 'redfirst %s\n\n' "$VERSION"
-    printf 'Маски исходников (проверьте, что это ваш проект):\n'
+    printf 'Source masks (check that this is your project):\n'
     source_patterns | tr '\n' ' ' | sed 's/^/  /;s/$/\n/'
     n=$(list_sources | grep -c . || true)
-    printf 'Под них попало файлов: %s\n' "$n"
-    [ "$n" = "0" ] && printf 'Ноль — задайте свои маски в %s, иначе проверки бесполезны.\n' "$SOURCES"
+    printf 'Files matched: %s\n' "$n"
+    [ "$n" = "0" ] && printf 'Zero - set your own masks in %s, or the checks are pointless.\n' "$SOURCES"
     printf '\n'
     if [ -f "$ASSETS" ]; then
-        printf '%s уже существует — оставляю как есть.\n' "$ASSETS"
+        printf '%s already exists - leaving it as it is.\n' "$ASSETS"
     else
         tpl="$(dirname "$0")/../templates/irreplaceable"
         if [ -f "$tpl" ]; then cp "$tpl" "$ASSETS"
-        else printf '# имя | дата последней проверки ВОССТАНОВЛЕНИЯ | период, дней\n' > "$ASSETS"; fi
-        printf 'Создан %s.\n\n' "$ASSETS"
-        printf 'Впишите туда, что незаменимо. Не сканирую ваши ~/.ssh и ~/.android\n'
-        printf 'намеренно: печатать на экран список путей к приватным ключам —\n'
-        printf 'ровно та ошибка, которую этот инструмент должен предотвращать.\n'
-        printf 'Незаменим не редкий файл, а тот, чья потеря останавливает продукт,\n'
-        printf 'включая то, что лежит на сервере.\n'
+        else printf '# name | date RESTORING was last verified | period, days\n' > "$ASSETS"; fi
+        printf 'Created %s.\n\n' "$ASSETS"
+        printf 'Write down what is irreplaceable. Your ~/.ssh and ~/.android are not scanned\n'
+        printf 'on purpose: printing a list of paths to private keys on screen is\n'
+        printf 'exactly the mistake this tool is supposed to prevent.\n'
+        printf 'Irreplaceable is not the rare file but the one whose loss stops the product,\n'
+        printf 'including whatever sits on a server.\n'
     fi
 }
 
 usage() {
     cat <<'EOF'
-redfirst — детерминированные точки останова для разработки с ИИ.
+redfirst - deterministic checkpoints for AI-assisted development.
 
-  redfirst init                 определить проект, создать конфиг
-  redfirst changed [<ref>]      что появилось и что исчезло — с чего начать проверку
-  redfirst red "<что>" -- <кмд> запустить и записать: проверка ПАДАЕТ
-  redfirst green "<что>" -- <кмд>  запустить и записать переход в зелёное
-  redfirst log                  журнал: что показано красным и что закрыто
-  redfirst due [--quiet]        просроченные проверки восстановления
-  redfirst verified "<имя>"     отметить актив проверенным сегодня
-  redfirst wired <Symbol>       в скольких файлах имя есть в коде; один — мёртвый
-  redfirst samples <pattern>    число + образцы начала, середины и конца
-  redfirst counter <term...>    поиск того, чего якобы нет
+  redfirst init                 detect the project, create the config
+  redfirst changed [<ref>]      what appeared and disappeared - where to start
+  redfirst red "<what>" -- <cmd>   run it and record that the check FAILS
+  redfirst green "<what>" -- <cmd> run it and record the move to green
+  redfirst log                  journal: what was shown red, what is closed
+  redfirst due [--quiet]        overdue restore checks
+  redfirst verified "<name>"    mark an asset verified today
+  redfirst wired <Symbol>       in how many files the name is in code; one is dead
+  redfirst samples <pattern>    a count plus samples from start, middle and end
+  redfirst counter <term...>    search for what is claimed absent
 
-Коды: 0 — чисто, 1 — есть на что смотреть, 2 — проверить не удалось.
-Код 2 никогда не означает «всё в порядке».
+Exit codes: 0 clean, 1 something to look at, 2 could not check.
+Exit 2 never means "all fine".
 EOF
 }
 
@@ -1084,5 +1084,5 @@ case "$cmd" in
     counter)  cmd_counter "$@" ;;
     -h|--help|help) usage ;;
     -v|--version)   printf 'redfirst %s\n' "$VERSION" ;;
-    *) die "неизвестная команда: $cmd" ;;
+    *) die "unknown command: $cmd" ;;
 esac

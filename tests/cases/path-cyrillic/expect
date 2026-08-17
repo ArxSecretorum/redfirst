@@ -1,1 +1,1 @@
-green ~ 0 ~ ЖИВЁТ && n:files=2 && n:code=2 && sum ~ wired Kirill ~ 2026-08-17: нелатинский путь не должен ломать разбор
+green ~ 0 ~ ALIVE && n:files=2 && n:code=2 && sum ~ wired Kirill ~ 2026-08-17: нелатинский путь не должен ломать разбор

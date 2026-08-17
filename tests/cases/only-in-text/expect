@@ -1,1 +1,1 @@
-red ~ 1 ~ В КОДЕ ИМЯ НЕ ВСТРЕЧАЕТСЯ НИГДЕ && n:files=2 && n:code=0 && n:text=2 && n:hits=0 && sum ~ wired LegacyExport ~ 2026-08-17: четвёртый исход — имя живёт только в строках. Упоминание не есть использование
+red ~ 1 ~ THE NAME OCCURS NOWHERE IN CODE && n:files=2 && n:code=0 && n:text=2 && n:hits=0 && sum ~ wired LegacyExport ~ 2026-08-17: четвёртый исход — имя живёт только в строках. Упоминание не есть использование

@@ -1,1 +1,1 @@
-red ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:files=2 && n:code=1 && n:text=1 && n:hits=1 && sum ~ wired Ghosty ~ 2026-08-17: raw-строка Kotlin на несколько строк, проза внутри неё засчитывалась вызовами
+red ~ 1 ~ A SINGLE MENTION && n:files=2 && n:code=1 && n:text=1 && n:hits=1 && sum ~ wired Ghosty ~ 2026-08-17: raw-строка Kotlin на несколько строк, проза внутри неё засчитывалась вызовами

@@ -1,63 +1,67 @@
-# Правила проверки (redfirst)
+# Verification rules (redfirst)
 
-Три правила ниже нельзя вызвать хуком: у них нет машинного события-триггера.
-Поэтому они здесь — и обязательны к соблюдению без напоминаний.
+The three rules below cannot be enforced by a hook: there is no machine event to
+trigger them. That is why they live here, and why they hold without reminders.
 
-Общий принцип: **проверка засчитывается только если её результат может оценить
-человек, не читающий код.** «Я проверил, всё в порядке» — не результат.
-Число, три строки образца или переход красного в зелёное — результат.
+The principle behind all of them: **a check counts only if its result can be
+judged by someone who does not read code.** "I checked, it's fine" is not a
+result. A number, three sample lines, or a move from red to green is a result.
 
-## 1. Дешёвая проверка идёт впереди теории о её ненужности
+## 1. A cheap check comes before the theory that it is unnecessary
 
-Если в очереди стоит проверка дешевле пяти минут — она выполняется до анализа,
-доказывающего, что она не нужна. Рассуждение о том, почему измерение излишне,
-почти всегда дороже самого измерения и иногда неверно.
+If a check costing under five minutes is available, run it before the analysis
+proving it is not needed. Reasoning about why a measurement is redundant almost
+always costs more than the measurement, and is sometimes wrong.
 
-## 2. Не я ли сам создал различие, на которое ссылаюсь
+## 2. Did I create the difference I am reasoning from
 
-Прежде чем делать вывод из различия между A и B, проверить: не трогал ли я B
-в ходе замера. Диагностическое действие — часть эксперимента, а не нейтральное
-наблюдение над ним.
+Before concluding anything from a difference between A and B, check whether you
+touched B while measuring. A diagnostic action is part of the experiment, not a
+neutral observation of it.
 
-## 3. Утверждение об отсутствии требует поиска присутствия
+## 3. A claim of absence requires a search for presence
 
-Прежде чем сказать «X отсутствует / не обрабатывается / не покрыто», выполнить
-поиск, который искал бы X, и приложить его вывод:
+Before saying "X is missing / not handled / not covered", run a search that
+would find X, and attach its output:
 
     redfirst counter <term> [term...]
 
-Формулировка «я не нашёл» и формулировка «этого нет» — разные утверждения.
-Публиковать можно только первую, если поиск не был исчерпывающим.
+"I did not find it" and "it is not there" are different claims. Only the first
+one may be published when the search was not exhaustive.
 
-## Приёмка
+## Acceptance
 
-Перед словом «готово» — показать, как оно **падает** на заведомо сломанном
-входе, который назвал владелец. Сначала красное, потом зелёное. Зелёное само
-по себе не доказывает ничего: тесты писал тот же автор, что и код.
+Before the word "done", show how it **fails** on a deliberately broken input
+named by the owner. Red first, then green. Green on its own proves nothing: the
+tests were written by the same author as the code.
 
-Это правило больше не на совести — оно проверяется:
+This rule is no longer on anyone's conscience - it is checked:
 
-    redfirst red   "<что проверяем>" -- <команда>
-    redfirst green "<то же самое>"   -- <та же команда>
+    redfirst red   "<what you are checking>" -- <command>
+    redfirst green "<the same wording>"      -- <the same command>
 
-`red` сам запускает команду и отказывается записывать, если она проходит.
-`green` отказывается, если красного с той же формулировкой в журнале не было.
-Владелец читает результат командой `redfirst log` — там видно, что было
-объявлено сломанным, какого числа и дошло ли до зелёного.
+`red` runs the command itself and refuses to record anything if it passes.
+`green` refuses if no red with the same wording is in the journal. The owner
+reads the result with `redfirst log`: what was declared broken, on what date,
+and whether it ever reached green.
 
-Перед тем как считать новый модуль существующим:
+Before treating a new module as existing:
 
     redfirst wired <Symbol>
 
-Считаются файлы вне тестов, где имя встречается в коде. Один файл означает, что
-за его пределами вещи нет в работающей системе, сколько бы тестов её ни
-покрывало. Строки и комментарии не в счёт: упоминание — не использование.
+It counts files outside tests where the name occurs in code. One file means that
+beyond it the thing is not in the running system, however many tests cover it.
+Strings and comments do not count: a mention is not a use.
 
-## Числа
+If you do not know which name to check, start from the change itself:
 
-Любая цифра, влияющая на решение, приводится вместе с тремя строками того, что
-она посчитала:
+    redfirst changed
+
+## Numbers
+
+Any figure that affects a decision is reported together with three lines of what
+it counted:
 
     redfirst samples <pattern>
 
-Измерительный прибор ошибается так же легко, как измеряемое.
+The measuring instrument errs as easily as the thing being measured.
