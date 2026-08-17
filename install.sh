@@ -30,10 +30,36 @@ BIN="$SELF_DIR/bin/redfirst"
 
 # The hook is invoked by the harness, not necessarily by a shell that honours a
 # shebang. On Windows a bare path to an extensionless file opens the
-# "choose an app" dialog instead of running — observed, not theorised. `sh` in
-# front makes the command work regardless of who launches it, and the path is
-# quoted so a space in it cannot split the command.
-HOOK_CMD="sh \"$BIN\" due --quiet"
+# "choose an app" dialog instead of running — observed, not theorised — so the
+# interpreter has to be named explicitly, and the path is quoted so a space in
+# it cannot split the command.
+#
+# Naming it `sh` is not enough, and that took installing the tool for real to
+# find out. Measured on Windows: `sh` does not resolve from cmd.exe at all, and
+# the harness is free to spawn the hook from there. The installer could not see
+# this, because it verifies the command by running it from itself — that is,
+# from a POSIX shell, the one launcher for which the bare name always works.
+#
+# So the interpreter is named by ABSOLUTE path in this platform's own form.
+#
+# And on the emulation layers it is started as a LOGIN shell. Without that it
+# inherits the bare Windows PATH, where none of the POSIX utilities exist: the
+# tool dies on `mktemp: command not found` before reaching a single check. It
+# dies loudly, exit 2, as designed — but the one automatic guarantee of this
+# product would never have fired. Measured, then fixed: the login form runs
+# from cmd.exe, PowerShell and bash alike, and costs 427 ms against 189 ms,
+# once per session.
+SH=$(command -v sh 2>/dev/null) || SH=""
+[ -n "$SH" ] || SH="/bin/sh"
+LOGIN=""
+# cygpath ships with Git Bash, MSYS and Cygwin — exactly the environments where
+# a POSIX path is what a non-POSIX launcher cannot use, and exactly the ones
+# whose utilities live outside the Windows PATH.
+if command -v cygpath >/dev/null 2>&1; then
+    _native=$(cygpath -w "$SH" 2>/dev/null) || _native=""
+    [ -n "$_native" ] && { SH="$_native"; LOGIN=" -l"; }
+fi
+HOOK_CMD="\"$SH\"$LOGIN \"$BIN\" due --quiet"
 
 # JSON needs backslashes and quotes escaped; Windows paths are full of the first.
 json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
