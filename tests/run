@@ -397,13 +397,35 @@ run_unit() {
 # ── self-check ───────────────────────────────────────────────────────────────
 # Breaks the tool on purpose and demands the suite notices. A suite that stays
 # green on a broken tool proves nothing.
+#
+# The list lives in a variable so that «шесть точек слома» in the documents can
+# be counted from it instead of being retyped. A number nobody can compute is a
+# number nobody maintains — the whole premise of this tool, applied to its own
+# paperwork. Globbing is switched off while the variable is split: the patterns
+# contain `*` and would otherwise be expanded against the current directory.
+BREAK_POINTS='dates:due-*date*
+noise:wired-only-in-test
+single:wired-dead-*
+quiet:due-quiet-*
+strings:wired-strings-js
+redgreen:redgreen-green-needs-red'
+
+break_count() {
+    _bn=0
+    set -f
+    for _bp in $BREAK_POINTS; do _bn=$((_bn + 1)); done
+    set +f
+    printf '%s' "$_bn"
+}
+
 self_check() {
     note 'redfirst tests: самопроверка — ломаю инструмент и жду красного'
     note ''
     bad=0
-    for pair in 'dates:due-*date*' 'noise:wired-only-in-test' \
-                'single:wired-dead-*' 'quiet:due-quiet-*' \
-                'strings:wired-strings-js' 'redgreen:redgreen-green-needs-red'; do
+    _total_points=$(break_count)
+    set -f
+    for pair in $BREAK_POINTS; do
+        set +f
         point=${pair%%:*}; pattern=${pair#*:}
         # `sh "$0"`, не `"$0"`: исполняемый бит не переживает авторство под
         # Windows, из git всё приходит с правами 644, и на Linux прямой вызов
@@ -424,18 +446,57 @@ self_check() {
     done
     note ''
     if [ "$bad" -gt 0 ]; then
-        note "Самопроверка провалена по $bad из 6 точек. Набору доверять нельзя."
+        note "Самопроверка провалена по $bad из $_total_points точек. Набору доверять нельзя."
         exit 3
     fi
-    note 'Самопроверка пройдена: набор ловит поломку по каждой из шести точек.'
+    note "Самопроверка пройдена: набор ловит поломку по каждой из $_total_points точек."
     exit 0
+}
+
+# ── счёт без прогона ─────────────────────────────────────────────────────────
+# Числа, которыми набор описан в README и в DEBTS.md, берутся отсюда, а не
+# перепечатываются руками. Считается теми же правилами, что и прогон, — иначе
+# получился бы второй счётчик, расходящийся с первым, и сверять пришлось бы уже
+# его. Случаи при этом не запускаются: режим стоит доли секунды.
+count_only() {
+    _t=0
+    for file in "$CASES"/*.cases; do
+        [ -f "$file" ] || continue
+        while IFS= read -r line || [ -n "$line" ]; do
+            case $line in ''|\#*) continue ;; esac
+            split_into 'id dir code needle fixture cmd' "$line"
+            [ -n "$id" ] && [ -n "$cmd" ] || continue
+            _t=$((_t + 1))
+        done < "$file"
+    done
+    _d=0
+    for case_dir in "$CASES"/*/; do
+        [ -d "$case_dir" ] || continue
+        [ -f "$case_dir/setup.sh" ] && [ -f "$case_dir/expect" ] && _d=$((_d + 1))
+    done
+    _u=0
+    for file in "$UNIT"/*.sh; do
+        [ -f "$file" ] || continue
+        _u=$((_u + 1))
+    done
+    _s=0
+    for one in $SHELLS; do _s=$((_s + 1)); done
+    printf 'cases-table=%s\n' "$_t"
+    printf 'cases-dir=%s\n'   "$_d"
+    printf 'units=%s\n'       "$_u"
+    printf 'shells=%s\n'      "$_s"
+    printf 'cases=%s\n'       "$((_t + _d))"
+    printf 'checks=%s\n'      "$(( (_t + _d + _u) * _s ))"
+    printf 'breaks=%s\n'      "$(break_count)"
+    printf 'tool-lines=%s\n'  "$(grep -c '' "$TOOL")"
 }
 
 case "${1:-}" in
     --self-check) self_check ;;
+    --count)      count_only; exit 0 ;;
     --plain)      PLAIN=1 ;;
     '')           PLAIN=0 ;;
-    *)            echo "usage: run [--self-check]" >&2; exit 3 ;;
+    *)            echo "usage: run [--self-check|--count]" >&2; exit 3 ;;
 esac
 
 run_table

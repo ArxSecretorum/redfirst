@@ -262,8 +262,9 @@ auditable is the only honest basis of trust for a tool like this.
 
 ## The regression suite
 
+<!-- redfirst-count: cases=138 checks=286 -->
 ```sh
-sh tests/run              # 121 cases across dash and bash — 250 checks
+sh tests/run              # 138 cases across dash and bash — 286 checks
 sh tests/run --self-check # breaks the tool on purpose, demands the suite notices
 ```
 
@@ -280,9 +281,10 @@ mark a suite carrying such cases is red forever and stops telling the known from
 a new regression. The mark is loud — the exit code is never 0 while one is open,
 and a marked case that **passes** exits 2 and demands the mark be removed.
 
+<!-- redfirst-count: checks=286 -->
 A case whose precondition cannot be created on this machine does not count as
 passed: it lands in a **NOT CHECKED** bucket, is named in the report, and the
-word "clean" becomes unavailable. On Windows six checks out of 250 are skipped
+word "clean" becomes unavailable. On Windows six checks out of 286 are skipped
 that way — `chmod 000` silently does nothing there, and neither an unreadable
 file nor a symlink can be made. The suite is only complete on Linux.
 
@@ -290,6 +292,7 @@ Everything runs in two shells, and a divergence between them is its own failure
 class: the bashism `$((10#08))` was invisible under bash and killed `due` on
 every August date, and `/bin/sh` on Debian and Raspberry Pi OS is dash.
 
+<!-- redfirst-count: breaks=6 -->
 `--self-check` deliberately breaks the tool at six points and requires the suite
 to go red. A suite that cannot be shown failing proves nothing — the same "green
 proves nothing" this tool exists to fight, one level up.
