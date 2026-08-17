@@ -472,6 +472,140 @@ cmd_counter() {
     exit 0
 }
 
+# ── red / green ──────────────────────────────────────────────────────────────
+# The rule this tool is named after was, until now, the only one it did not
+# enforce: "show how it fails before calling it done" lived in CLAUDE.md as a
+# request. A request is exactly the kind of unverifiable claim the rest of this
+# file exists to refuse — the instrument stood on the thing it distrusts.
+#
+# So `red` and `green` do not take anyone's word for it. They RUN the command
+# and check the outcome themselves:
+#
+#   red   — the command must FAIL. Claiming red on something that passes is
+#           refused, and nothing is written: there was no failing check.
+#   green — the command must PASS, and a red with the same wording must already
+#           be in the journal. Green with no red before it proves nothing.
+#
+# What accumulates is a journal a non-reader can open: what was claimed broken,
+# on what date, by which command, and whether it ever went green.
+
+LEDGER="$CONFIG_DIR/ledger"
+
+_ledger_append() {   # дата, состояние, код, команда, утверждение
+    mkdir -p "$CONFIG_DIR"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" >> "$LEDGER"
+}
+
+# Last recorded state for a claim; empty when the claim is unknown.
+_ledger_state=""
+_ledger_last_state() {
+    _ledger_state=""
+    [ -f "$LEDGER" ] || return 0
+    while IFS='	' read -r _ld _ls _lc _lcmd _lclaim || [ -n "$_lclaim" ]; do
+        # `if/fi`, не `&&`. Если последняя строка журнала не про это
+        # утверждение, `&&` оставляет статус 1: он становится статусом цикла,
+        # затем функции, и `set -e` убивает вызывающего. Поймано на живом
+        # запуске — `log` печатал журнал и выходил единицей, не сказав ни слова
+        # о том, что открыто.
+        if [ "$_lclaim" = "$1" ]; then _ledger_state=$_ls; fi
+    done < "$LEDGER"
+    return 0
+}
+
+_open_claims() {
+    [ -f "$LEDGER" ] || return 0
+    cut -f5 "$LEDGER" | sort -u | while IFS= read -r c; do
+        [ -n "$c" ] || continue
+        _ledger_last_state "$c"
+        # `if/fi`, не `&&`: при закрытом утверждении `&&` оставляет статус 1,
+        # он становится статусом цикла, потом подстановки, и `set -e` убивает
+        # команду молча — журнал печатался и выходил единицей без единого слова.
+        if [ "$_ledger_state" = "red" ]; then printf '%s\n' "$c"; fi
+    done
+    return 0
+}
+
+_red_green() {
+    want=$1; shift
+    [ $# -ge 1 ] || die "usage: redfirst $want \"<что проверяем>\" -- <команда>"
+    claim=$(trim "$1"); shift
+    [ -n "$claim" ] || die 'пустое утверждение — journal записью без имени бесполезен'
+    case $claim in
+        *'	'*) die 'в утверждении не должно быть табуляции: она разделяет поля журнала' ;;
+    esac
+    [ "${1:-}" = "--" ] || die "после утверждения нужен -- и команда, которая проверяет"
+    shift
+    [ $# -ge 1 ] || die 'после -- не указана команда'
+
+    printf 'redfirst %s: %s\n' "$want" "$claim"
+    printf 'Запускаю: %s\n' "$*"
+    set +e
+    "$@" > "$TMP/rg" 2>&1
+    rc=$?
+    set -e
+    printf 'Код возврата: %s. Последние строки вывода:\n' "$rc"
+    tail -n 6 "$TMP/rg" | sed 's/^/  /'
+
+    today=$(date +%Y-%m-%d)
+    if [ "$want" = "red" ]; then
+        if [ "$rc" = "0" ]; then
+            printf 'ОТКАЗ: команда прошла успешно, а вы объявили её красной.\n'
+            printf 'Записывать нечего — непройденной проверки не было.\n'
+            exit 2
+        fi
+        _ledger_append "$today" red "$rc" "$*" "$claim"
+        printf 'Записано КРАСНЫМ. Теперь это можно закрыть: redfirst green "%s" -- <та же команда>\n' "$claim"
+        exit 0
+    fi
+
+    _ledger_last_state "$claim"
+    # Точка слома: принимать зелёное без предшествующего красного. Это ровно
+    # то правило, ради которого инструмент назван, и набор обязан уметь
+    # заметить его пропажу.
+    _broken redgreen && _ledger_state=red
+    if [ "$_ledger_state" != "red" ]; then
+        printf 'ОТКАЗ: красного с таким утверждением в журнале нет.\n'
+        printf 'Зелёное без красного ничего не доказывает — сначала покажите, как оно падает.\n'
+        if [ -f "$LEDGER" ]; then
+            printf 'Открытые красные сейчас:\n'
+            _open_claims | sed 's/^/  /'
+        fi
+        exit 2
+    fi
+    if [ "$rc" != "0" ]; then
+        printf 'Ещё красное (код %s). В журнал не пишу: перехода не было.\n' "$rc"
+        exit 1
+    fi
+    _ledger_append "$today" green 0 "$*" "$claim"
+    printf 'Записано ЗЕЛЁНЫМ. Переход красное → зелёное показан и записан.\n'
+    exit 0
+}
+
+cmd_log() {
+    if [ ! -f "$LEDGER" ]; then
+        printf 'redfirst: журнал проверок пуст.\n'
+        printf 'Ни одна проверка ещё не показана красной. Начните с:\n'
+        printf '  redfirst red "<что проверяем>" -- <команда>\n'
+        exit 2
+    fi
+    printf 'redfirst: журнал проверок (%s)\n\n' "$LEDGER"
+    while IFS='	' read -r d s c cmd claim || [ -n "$claim" ]; do
+        [ -n "$claim" ] || continue
+        printf '  %s  %-6s код %-3s %s\n' "$d" "$s" "$c" "$claim"
+        printf '                          %s\n' "$cmd"
+    done < "$LEDGER"
+    printf '\n'
+    open=$(_open_claims)
+    if [ -n "$open" ]; then
+        n=$(printf '%s\n' "$open" | grep -c .)
+        printf 'ОТКРЫТО (показаны красными и не закрыты): %s\n' "$n"
+        printf '%s\n' "$open" | sed 's/^/  /'
+        exit 1
+    fi
+    printf 'Все показанные красными закрыты зелёным.\n'
+    exit 0
+}
+
 # ── due ──────────────────────────────────────────────────────────────────────
 # Any field this cannot parse counts as OVERDUE. 0.1.0 treated an unreadable
 # date, a non-numeric period and a stray separator as "fine" and printed green.
@@ -720,6 +854,9 @@ usage() {
 redfirst — детерминированные точки останова для разработки с ИИ.
 
   redfirst init                 определить проект, создать конфиг
+  redfirst red "<что>" -- <кмд> запустить и записать: проверка ПАДАЕТ
+  redfirst green "<что>" -- <кмд>  запустить и записать переход в зелёное
+  redfirst log                  журнал: что показано красным и что закрыто
   redfirst due [--quiet]        просроченные проверки восстановления
   redfirst verified "<имя>"     отметить актив проверенным сегодня
   redfirst wired <Symbol>       в скольких файлах имя есть в коде; один — мёртвый
@@ -739,6 +876,9 @@ EOF
 cmd="$1"; shift
 case "$cmd" in
     init)     cmd_init "$@" ;;
+    red)      _red_green red "$@" ;;
+    green)    _red_green green "$@" ;;
+    log)      cmd_log "$@" ;;
     due)      cmd_due "$@" ;;
     verified) cmd_verified "$@" ;;
     wired)    cmd_wired "$@" ;;

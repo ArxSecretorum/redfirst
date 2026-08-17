@@ -403,7 +403,7 @@ self_check() {
     bad=0
     for pair in 'dates:due-*date*' 'noise:wired-only-in-test' \
                 'single:wired-dead-*' 'quiet:due-quiet-*' \
-                'strings:wired-strings-js'; do
+                'strings:wired-strings-js' 'redgreen:redgreen-green-needs-red'; do
         point=${pair%%:*}; pattern=${pair#*:}
         # `sh "$0"`, не `"$0"`: исполняемый бит не переживает авторство под
         # Windows, из git всё приходит с правами 644, и на Linux прямой вызов
@@ -424,10 +424,10 @@ self_check() {
     done
     note ''
     if [ "$bad" -gt 0 ]; then
-        note "Самопроверка провалена по $bad из 5 точек. Набору доверять нельзя."
+        note "Самопроверка провалена по $bad из 6 точек. Набору доверять нельзя."
         exit 3
     fi
-    note 'Самопроверка пройдена: набор ловит поломку по каждой из пяти точек.'
+    note 'Самопроверка пройдена: набор ловит поломку по каждой из шести точек.'
     exit 0
 }
 
