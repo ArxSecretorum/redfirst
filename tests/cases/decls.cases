@@ -1,20 +1,22 @@
-# Блокер 1: строка объявления засчитывается вызовом там, где форма не покрыта.
+# Формы объявления: вопрос сменился, и они перестали иметь значение.
 # id ~ напр ~ код ~ подстрока ~ стенд ~ команда ~ происхождение
 #
 # Каждый символ в стенде @decls объявлен ровно один раз и не вызывается ниоткуда.
-# Правда по всем: МЁРТВ. Инструмент обязан сказать «Ноль вызовов».
+# Правда по всем: МЁРТВ.
 #
-# Формы проверены поштучно на живом инструменте 2026-08-17: покрыта ровно одна —
-# та, где ключевое слово стоит вплотную к имени (`fun deadCoveredForm`). Шесть
-# остальных дают «ОСТАЁТСЯ ВЫЗОВОВ 1» и код 0, то есть уверенное ложное зелёное,
-# в котором единственная «вызывающая» строка — само объявление.
+# 2026-08-17, первая половина дня: шесть форм из семи давали «ОСТАЁТСЯ ВЫЗОВОВ 1»
+# и код 0 — уверенное ложное зелёное, в котором единственной «вызывающей» строкой
+# было само объявление. Проверено поштучно на живом инструменте, не по чтению
+# регулярки.
+#
+# Вторая половина дня: разбор синтаксиса объявления удалён. Считаются файлы, а
+# одно упоминание во всём проекте — это одно упоминание в любой форме. Все шесть
+# закрыты одной правкой, и ни одна из них больше не может вернуться поодиночке.
 
-decl-java-return-type ~ red? ~ 1 ~ Ноль вызовов && n:decl=1 && n:call=0 ~ @decls ~ wired deadReturnType  ~ 2026-08-17: `public String deadReturnType()` — между модификатором и именем стоит тип возврата
-decl-java-field       ~ red? ~ 1 ~ Ноль вызовов && n:decl=1 && n:call=0 ~ @decls ~ wired deadField       ~ 2026-08-17: `private final String deadField = …` — поле с типом
-decl-shell-function   ~ red? ~ 1 ~ Ноль вызовов && n:decl=1 && n:call=0 ~ @decls ~ wired deadShellFn     ~ 2026-08-17: `deadShellFn() {` — в shell у функции нет ключевого слова вообще
-decl-go-method-name   ~ red? ~ 1 ~ Ноль вызовов && n:decl=1 && n:call=0 ~ @decls ~ wired deadMethodName  ~ 2026-08-17: `func (b *Box) deadMethodName()` — покрыт получатель, а не имя метода
-decl-ts-class-method  ~ red? ~ 1 ~ Ноль вызовов && n:decl=1 && n:call=0 ~ @decls ~ wired deadTsMethod    ~ 2026-08-17: `deadTsMethod(): void {` — метод класса без ключевого слова
-decl-c-function       ~ red? ~ 1 ~ Ноль вызовов && n:decl=1 && n:call=0 ~ @decls ~ wired dead_c_function ~ 2026-08-17: `int dead_c_function(void) {` — тип возврата вместо ключевого слова
-
-# Контроль: единственная покрытая форма. Обязана остаться верной после переделки.
-decl-kotlin-covered   ~ red  ~ 1 ~ Ноль вызовов && n:decl=1 && n:call=0 && sum ~ @decls ~ wired deadCoveredForm ~ 2026-08-17: `fun deadCoveredForm` — ключевое слово вплотную к имени
+decl-java-return-type ~ red ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:files=1 && n:code=1 && n:hits=1 && sum ~ @decls ~ wired deadReturnType  ~ 2026-08-17: `public String deadReturnType()` — между модификатором и именем стоит тип возврата
+decl-java-field       ~ red ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:files=1 && n:code=1 && n:hits=1 && sum ~ @decls ~ wired deadField       ~ 2026-08-17: `private final String deadField = …` — поле с типом
+decl-shell-function   ~ red ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:files=1 && n:code=1 && n:hits=1 && sum ~ @decls ~ wired deadShellFn     ~ 2026-08-17: `deadShellFn() {` — в shell у функции нет ключевого слова вообще
+decl-go-method-name   ~ red ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:files=1 && n:code=1 && n:hits=1 && sum ~ @decls ~ wired deadMethodName  ~ 2026-08-17: `func (b *Box) deadMethodName()` — был покрыт получатель, а не имя метода
+decl-ts-class-method  ~ red ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:files=1 && n:code=1 && n:hits=1 && sum ~ @decls ~ wired deadTsMethod    ~ 2026-08-17: `deadTsMethod(): void {` — метод класса без ключевого слова
+decl-c-function       ~ red ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:files=1 && n:code=1 && n:hits=1 && sum ~ @decls ~ wired dead_c_function ~ 2026-08-17: `int dead_c_function(void) {` — тип возврата вместо ключевого слова
+decl-kotlin-covered   ~ red ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:files=1 && n:code=1 && n:hits=1 && sum ~ @decls ~ wired deadCoveredForm ~ 2026-08-17: `fun deadCoveredForm` — единственная форма, которая работала и до замены

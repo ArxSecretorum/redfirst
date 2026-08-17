@@ -150,7 +150,7 @@ fi
 cat <<'EOF'
 
 Вручную:
-  redfirst wired <Symbol>     разбор ссылок; ноль вызовов = мёртвый код
+  redfirst wired <Symbol>     в скольких файлах имя есть в коде; один — мёртвый
   redfirst samples <pattern>  число вместе с образцами, которые оно посчитало
   redfirst counter <term>     поиск того, чего якобы нет
 

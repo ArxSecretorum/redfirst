@@ -173,16 +173,18 @@ split_into() {
 _num=""
 report_num() {
     case $1 in
-        total) _lbl='всего совпадений' ;;
-        decl)  _lbl='из них объявления' ;;
-        text)  _lbl='комментарии/строки' ;;
-        imp)   _lbl='импорты (не вызов)' ;;
-        call)  _lbl='ОСТАЁТСЯ ВЫЗОВОВ' ;;
+        files) _lbl='файлов с упоминанием' ;;
+        code)  _lbl='из них в коде' ;;
+        text)  _lbl='только вне кода' ;;
+        hits)  _lbl='упоминаний в коде' ;;
         *)     _num=""; return 1 ;;
     esac
+    # Anchored on the report block, not on the label alone: prose below the
+    # block mentioned the same words and the parser read a number out of a
+    # sentence. Bucket lines are the only ones indented by two spaces.
     _num=""
     while IFS= read -r _l; do
-        case $_l in *"$_lbl"*) _num=${_l##* } ;; esac
+        case $_l in "  $_lbl"*) _num=${_l##* } ;; esac
     done < "$2"
     [ -n "$_num" ] || return 1
     case $_num in ''|*[!0-9]*) _num=""; return 1 ;; esac
@@ -197,7 +199,7 @@ check_needle() {
     case "$_n" in
         -|'') return 0 ;;
         sum)
-            for _k in total decl text imp call; do
+            for _k in files code text; do
                 if ! report_num "$_k" "$_o_f"; then
                     printf 'в отчёте нет корзины %s (начало вывода: %s)' "$_k" \
                            "$(head -c 70 "$_o_f" 2>/dev/null | tr '\n' ' ')"
@@ -205,10 +207,10 @@ check_needle() {
                 fi
                 eval "_v_$_k=\$_num"
             done
-            _s=$((_v_decl + _v_text + _v_imp + _v_call))
-            if [ "$_s" != "$_v_total" ]; then
-                printf 'арифметика не сходится: всего %s, по корзинам %s (%s+%s+%s+%s)' \
-                       "$_v_total" "$_s" "$_v_decl" "$_v_text" "$_v_imp" "$_v_call"
+            _s=$((_v_code + _v_text))
+            if [ "$_s" != "$_v_files" ]; then
+                printf 'арифметика не сходится: файлов %s, по корзинам %s (%s+%s)' \
+                       "$_v_files" "$_s" "$_v_code" "$_v_text"
                 return 1
             fi ;;
         n:*)
@@ -361,7 +363,7 @@ self_check() {
     note ''
     bad=0
     for pair in 'dates:due-*date*' 'noise:wired-only-in-test' \
-                'decl:wired-dead-*' 'quiet:due-quiet-*' \
+                'single:wired-dead-*' 'quiet:due-quiet-*' \
                 'strings:wired-strings-js'; do
         point=${pair%%:*}; pattern=${pair#*:}
         out=$(REDFIRST_SELFTEST=1 REDFIRST_BREAK="$point" ONLY="$pattern" \

@@ -36,7 +36,7 @@ call it done.
 | | |
 |---|---|
 | Overdue restore checks | printed at the start of every session |
-| Dead code | `wired` prints non-test references; zero exits red |
+| Dead code | `wired` prints how many non-test files carry the name in code; one exits red |
 | A bad measurement | `samples` will not let a number be reported without what it counted |
 
 **Advisory — lives in `CLAUDE.md`, compliance is the assistant's to keep:**
@@ -147,14 +147,15 @@ auditable is the only honest basis of trust for a tool like this.
 ## Regression suite
 
 ```sh
-sh tests/run              # 90 cases across dash and bash — 180 checks
+sh tests/run              # 91 cases across dash and bash — 182 checks
 sh tests/run --self-check # breaks the tool on purpose, demands the suite notices
 ```
 
-`sh tests/run` currently exits **1**, and that is not a malfunction: twelve
-cases are marked `red?` / `green?` — "the direction is right, the tool does not
-meet it yet". Those are publication blockers, written down before the fix. No
-regressions: 0 blockers, 0 noise, 0 shell divergences.
+A case may be marked `red?` or `green?` — "the direction is right, the tool does
+not meet it yet". That is how a known open defect is written down: without the
+mark a suite carrying such cases is red forever and stops telling the known from
+a new regression. The mark is loud — the exit code is never 0 while one is open,
+and a marked case that **passes** exits 2 and demands the mark be removed.
 
 Built around the fact that not all failures are equal. Every case declares a
 direction: `red` means the tool **must** raise the alarm, `green` means it must

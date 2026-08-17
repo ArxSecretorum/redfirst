@@ -1,28 +1,31 @@
 # wired — существует ли символ в работающей системе.
 # id ~ напр ~ код ~ подстрока ~ стенд ~ команда ~ происхождение
 #
-# red здесь означает «инструмент обязан назвать символ мёртвым» либо
-# «обязан отказаться от вывода», green — «обязан признать живым».
+# 2026-08-17: вопрос сменился. Было «сколько вызовов» — считалось разбором
+# синтаксиса объявления, который провалился в шести формах из семи. Стало
+# «в скольких файлах вне тестов имя встречается в коде». Объявление при этом
+# опознавать не нужно: это просто один файл.
 #
-# Утверждения разделяются `&&`. Кроме подстрок доступны:
-#   n:total|decl|text|imp|call=<число> — точное число в корзине отчёта
-#   sum                               — всего = объявления+строки+импорты+вызовы
-# Числа проверены на стенде вручную 2026-08-17, а не выведены из кода.
+# Четыре исхода: не найден (код 2); единственное упоминание; только внутри
+# своего файла; живёт в нескольких файлах (код 0). Три первых — код 1.
+#
+# Утверждения через `&&`. Корзины: files, code, text, hits.
+# sum: files = code + text. Числа сняты на стендах вручную 2026-08-17.
 
-wired-dead-kotlin      ~ red   ~ 1 ~ Ноль вызовов && n:total=4 && n:decl=1 && n:text=3 && n:call=0 && sum ~ @kotlin   ~ wired Orphan       ~ 2026-08-16: мёртвый класс с doc-комментарием и упоминанием в строках
-wired-live-kotlin      ~ green ~ 0 ~ ОСТАЁТСЯ ВЫЗОВОВ && n:total=3 && n:decl=1 && n:call=2 && sum ~ @kotlin   ~ wired Helper       ~ 2026-08-16: живой символ обязан остаться живым
-wired-only-in-test     ~ red   ~ 1 ~ Ноль вызовов && n:total=1 && n:call=0 && sum ~ @kotlin   ~ wired TestedOnly   ~ 2026-08-16: вызов только из теста — не production
-wired-audit-not-test   ~ green ~ 0 ~ AUDIT.kt            ~ @kotlin   ~ wired Helper       ~ 2026-08-16: шаблон *IT.* глотал AUDIT — файл обязан числиться боевым
-wired-dead-go-receiver ~ red   ~ 1 ~ Ноль вызовов && sum ~ @go       ~ wired DeadThing    ~ 2026-08-16: func (d DeadThing) Method() засчитывался вызовом
-wired-live-go          ~ green ~ 0 ~ ОСТАЁТСЯ ВЫЗОВОВ && sum ~ @go   ~ wired LiveThing    ~ 2026-08-16: контроль к предыдущему
-wired-strings-js       ~ red   ~ 1 ~ Ноль вызовов && sum ~ @js       ~ wired Ghost        ~ 2026-08-17: строка, шаблон, хвостовой и блочный комментарий
-wired-live-js          ~ green ~ 0 ~ ОСТАЁТСЯ ВЫЗОВОВ && sum ~ @js   ~ wired Real         ~ 2026-08-17: упоминание в строке не должно убивать живой символ
-wired-subdirectories   ~ green ~ 0 ~ ОСТАЁТСЯ ВЫЗОВОВ    ~ @js       ~ wired Buried       ~ 2026-08-16: маска раскрывалась оболочкой, подкаталоги не сканировались
-wired-python-hash      ~ red   ~ 1 ~ Ноль вызовов && sum ~ @python   ~ wired Thing        ~ 2026-08-17: решётка внутри URL не комментарий
-wired-python-live      ~ green ~ 0 ~ ОСТАЁТСЯ ВЫЗОВОВ && sum ~ @python ~ wired Used       ~ 2026-08-17: контроль
-wired-missing-symbol   ~ red   ~ 2 ~ НЕ вывод о мёртвом  ~ @kotlin   ~ wired НетТакого    ~ 2026-08-16: ноль совпадений — не вердикт о мёртвом коде
-wired-regex-metachar   ~ red   ~ 2 ~ не встречается      ~ @kotlin   ~ wired auth.login   ~ 2026-08-16: точка как метасимвол находила auth_login
-wired-empty-symbol     ~ red   ~ 2 ~ -                   ~ @kotlin   ~ wired ''           ~ 2026-08-17: пустое имя не должно давать вердикт
-wired-shows-root       ~ green ~ 0 ~ Просканировано от   ~ @kotlin   ~ wired Helper       ~ 2026-08-17: отчёт обязан называть корень сканирования
-wired-shows-buckets    ~ green ~ 0 ~ из них объявления && sum ~ @kotlin ~ wired Helper     ~ 2026-08-17: разбор по корзинам виден владельцу
-wired-nomarker-project ~ red   ~ 1 ~ Ноль вызовов        ~ @nomarker ~ wired Alone        ~ 2026-08-17: проект без маркера сборки всё равно сканируется
+wired-dead-kotlin      ~ red   ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:files=2 && n:code=1 && n:text=1 && n:hits=1 && sum ~ @kotlin ~ wired Orphan ~ 2026-08-16: мёртвый класс с doc-комментарием и упоминанием в строках. Второй файл упоминает его только в литералах и в счёт не идёт
+wired-live-kotlin      ~ green ~ 0 ~ ЖИВЁТ && n:files=3 && n:code=3 && n:hits=3 && sum ~ @kotlin ~ wired Helper ~ 2026-08-16: живой символ обязан остаться живым
+wired-only-in-test     ~ red   ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:files=1 && n:code=1 && sum ~ @kotlin ~ wired TestedOnly ~ 2026-08-16: вызов только из теста — не production
+wired-audit-not-test   ~ green ~ 0 ~ AUDIT.kt ~ @kotlin ~ wired Helper ~ 2026-08-16: шаблон *IT.* глотал AUDIT — файл обязан числиться боевым
+wired-dead-go-receiver ~ red   ~ 1 ~ ТОЛЬКО ВНУТРИ СВОЕГО ФАЙЛА && n:code=1 && n:hits=2 && sum ~ @go ~ wired DeadThing ~ 2026-08-17: получатель метода `func (d DeadThing) Method()` — второе упоминание в том же файле, поэтому вердикт мягче «единственного». Обе строки показаны, конструирования среди них нет
+wired-self-only-go     ~ red   ~ 1 ~ ТОЛЬКО ВНУТРИ СВОЕГО ФАЙЛА && n:files=1 && n:code=1 && n:hits=2 ~ @go ~ wired LiveThing ~ 2026-08-17: бывший wired-live-go. При счёте файлов вызов в том же файле — третий исход, а не «жив»
+wired-strings-js       ~ red   ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:code=1 && n:hits=1 && sum ~ @js ~ wired Ghost ~ 2026-08-17: строка, шаблон, хвостовой и блочный комментарий
+wired-self-only-js     ~ red   ~ 1 ~ ТОЛЬКО ВНУТРИ СВОЕГО ФАЙЛА && n:code=1 && n:hits=2 ~ @js ~ wired Real ~ 2026-08-17: бывший wired-live-js. Упоминание в строке не считается, вызов в своём файле — считается
+wired-subdirectories   ~ green ~ 0 ~ ЖИВЁТ && n:files=2 && sum ~ @js ~ wired Buried ~ 2026-08-16: маска раскрывалась оболочкой, подкаталоги не сканировались
+wired-python-hash      ~ red   ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:code=1 && n:hits=1 && sum ~ @python ~ wired Thing ~ 2026-08-17: решётка внутри URL не комментарий
+wired-self-only-python ~ red   ~ 1 ~ ТОЛЬКО ВНУТРИ СВОЕГО ФАЙЛА && n:code=1 && n:hits=2 ~ @python ~ wired Used ~ 2026-08-17: бывший wired-python-live
+wired-missing-symbol   ~ red   ~ 2 ~ НЕ вывод о мёртвом ~ @kotlin ~ wired НетТакого ~ 2026-08-16: ноль совпадений — не вердикт о мёртвом коде
+wired-regex-metachar   ~ red   ~ 2 ~ не встречается ~ @kotlin ~ wired auth.login ~ 2026-08-16: точка как метасимвол находила auth_login
+wired-empty-symbol     ~ red   ~ 2 ~ - ~ @kotlin ~ wired '' ~ 2026-08-17: пустое имя не должно давать вердикт
+wired-shows-root       ~ green ~ 0 ~ Просканировано от ~ @kotlin ~ wired Helper ~ 2026-08-17: отчёт обязан называть корень сканирования
+wired-shows-buckets    ~ green ~ 0 ~ из них в коде && sum ~ @kotlin ~ wired Helper ~ 2026-08-17: разбор по корзинам виден владельцу
+wired-nomarker-project ~ red   ~ 1 ~ ЕДИНСТВЕННОЕ УПОМИНАНИЕ && n:code=1 ~ @nomarker ~ wired Alone ~ 2026-08-17: проект без маркера сборки всё равно сканируется

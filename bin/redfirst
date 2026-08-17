@@ -21,7 +21,7 @@ set -f          # globbing off: an unquoted mask like *.kt would otherwise be
                 # expanded by the shell against the current directory before
                 # find ever sees it, silently limiting every scan to the root.
 
-VERSION="0.4.1"
+VERSION="0.5.0"
 CONFIG_DIR="${REDFIRST_DIR:-.redfirst}"
 ASSETS="$CONFIG_DIR/irreplaceable"
 SOURCES="$CONFIG_DIR/sources"
@@ -134,7 +134,7 @@ list_sources() {
 }
 
 # A report produced from a subdirectory used to be indistinguishable from a
-# report over the whole project: same wording, smaller tree, and "0 вызовов" for
+# report over the whole project: same wording, smaller tree, and "один файл" for
 # a symbol whose only caller lives one level up. The scanned root is now stated
 # in every report, and a project marker above the current directory is called out.
 scanned_root_note() {
@@ -171,33 +171,20 @@ grep_sources() {
 }
 
 # ── classification of a match ────────────────────────────────────────────────
-# A hit is not a call. 0.1.0 counted doc comments, unused imports, string
-# literals and the declaration itself, so a completely dead package looked alive.
-
-DECL_KEYWORDS='class|object|interface|enum|trait|struct|record|protocol|extension|impl|module|namespace|type|def|fun|func|fn|sub|procedure|const|let|var|val|function'
-
-is_decl_re() {
-    s="$1"
-    # Beyond `class Foo`, three forms belong to the definition of the symbol
-    # rather than to some caller of it, and counting them as calls is how a
-    # dead type keeps looking alive:
-    #   * a Go/Rust method whose RECEIVER is the type — `func (d Foo) M()`
-    #   * a constructor — `public Foo(`
-    #   * a member declared with the type inside its own definition block
-    # Every keyword alternation carries a LEFT boundary. Without it the `val`
-    # inside `interval Foo(` matched, `fn` matched the tail of any identifier,
-    # and a live call landed in the declarations bucket — a false negative
-    # produced by the very mechanism meant to prevent one.
-    b='(^|[^[:alnum:]_])'
-    printf '%s(%s)[[:space:]]+%s([^[:alnum:]_]|$)' "$b" "$DECL_KEYWORDS" "$s"
-    printf '|^[[:space:]]*%s[[:space:]]*[:=][[:space:]]*(class|function|struct)' "$s"
-    printf '|%s(mod|package|namespace)[[:space:]]+%s([^[:alnum:]_]|$)' "$b" "$s"
-    printf '|%s(func|fn)[[:space:]]*\\([^)]*%s%s([^[:alnum:]_]|[[:space:]]|\\))' "$b" "$b" "$s"
-    printf '|%s(public|private|internal|protected|open|final|abstract)[[:space:]]+%s[[:space:]]*\\(' "$b" "$s"
-    printf '|%simpl([[:space:]]|<)[^{]*[[:space:]]%s([^[:alnum:]_]|$)' "$b" "$s"
-}
-
-comment_re='^[[:space:]]*(//|#|\*|/\*|--|;;|<!--|"""|'"'''"')'
+# A hit is not a use. 0.1.0 counted doc comments, unused imports and string
+# literals, so a completely dead package looked alive.
+#
+# What is NOT here any more: recognising the declaration of a symbol by its
+# syntax. Four rounds of patching that heuristic produced a regex covering
+# `fun Foo` and failing on six other forms — a Java method with a return type,
+# a Java field with a type, a shell function, the NAME of a Go method, a TS
+# class member, a C function. All six reported a dead symbol as alive, and the
+# single line printed under "Вызывается:" was its own declaration.
+#
+# The question changed instead of the parser: not "how many calls" but "in how
+# many files outside tests does this name appear in code". A declaration is
+# then just one file — no syntax needs recognising, and three honest outcomes
+# replace a number that was never trustworthy.
 import_re='^[[:space:]]*(import|from|use|using|require|include|#include|package|extern[[:space:]]+crate)([[:space:]]|\()'
 
 # ── wired ────────────────────────────────────────────────────────────────────
@@ -220,99 +207,176 @@ cmd_wired() {
         exit 2
     fi
 
-    # Classification is positional, not line-prefix based. 0.2.x only recognised
-    # a comment when the line STARTED with a marker, so a trailing `// see Foo`,
-    # the body of a /* … */ block and a symbol inside a string literal all
-    # counted as calls — three separate ways for a dead symbol to look alive.
-    # Regexes travel through the environment: awk -v processes escape sequences
-    # and would eat the backslash that makes `auth.login` a literal dot.
     cut -d: -f1 "$TMP/hits" | sort -u > "$TMP/hitfiles"
-    _rf_decl=$(is_decl_re "$esc")
-    _broken decl && _rf_decl='$^'
-    # Fifth break point. Stripping strings and comments is the longest and least
-    # obvious part of this file, and until now no self-check touched it: `decl`
-    # breaks only the declaration regex. With RF_NOSTRIP the classifier sees raw
-    # lines, so a symbol mentioned in a comment counts as a call — exactly the
-    # 0.1.0 failure this awk block exists to prevent.
+
+    # The file list reaches awk as QUOTED positional parameters. It used to be
+    # an unquoted `$(cat …)`: a path with a space split into two names that do
+    # not exist, awk read nothing at all, and the report printed "всего
+    # совпадений 4" with zero in every bucket, followed by a categorical
+    # verdict — arithmetic that does not add up, delivered with confidence.
+    set --
+    while IFS= read -r f; do set -- "$@" "$f"; done < "$TMP/hitfiles"
+
+    # Break point. RF_NOSTRIP makes the classifier read raw lines, so a symbol
+    # named only in a comment counts as real use — the 0.1.0 failure this awk
+    # block exists to prevent, and the only thing the suite can check it by.
     _rf_nostrip=0
     _broken strings && _rf_nostrip=1
-    RF_SYM="$re" RF_DECL="$_rf_decl" RF_IMP="$import_re" RF_NOSTRIP="$_rf_nostrip" \
+    # Quote characters travel through the environment so this program can be
+    # written inside single quotes without escaping gymnastics. Regexes travel
+    # the same way: awk -v processes escape sequences and would eat the
+    # backslash that makes `auth.login` a literal dot.
+    RF_SYM="$re" RF_IMP="$import_re" RF_NOSTRIP="$_rf_nostrip" \
+    RF_DQ='"' RF_SQ=$(printf '\47') RF_BT='`' \
     awk '
-    function strip_strings(s,   out,i,c,q,esc2) {
-        out=""; q=""; esc2=0
-        for (i = 1; i <= length(s); i++) {
-            c = substr(s, i, 1)
-            if (q != "") {
-                if (esc2) esc2 = 0
-                else if (c == "\\") esc2 = 1
-                else if (c == q) q = ""
-                out = out " "; continue
-            }
-            if (c == "\"" || c == "'"'"'" || c == "`") { q = c; out = out " "; continue }
-            out = out c
-        }
-        return out
+    BEGIN {
+        dq = ENVIRON["RF_DQ"]; sq = ENVIRON["RF_SQ"]; bt = ENVIRON["RF_BT"]
+        dq3 = dq dq dq; sq3 = sq sq sq
     }
+    function isshell(f) { return (f ~ /\.(sh|bash|zsh|ksh)$/) }
     function marker(f) {
-        if (f ~ /\.(py|rb|sh|bash|zsh|pl|pm|r|yaml|yml|toml|conf|cfg)$/) return "#"
+        if (f ~ /\.(py|rb|sh|bash|zsh|ksh|pl|pm|r|yaml|yml|toml|conf|cfg)$/) return "#"
         if (f ~ /\.(sql|lua|hs|elm|adb|ads)$/) return "--"
         return "//"
     }
-    FNR == 1 { inblock = 0; m = marker(FILENAME) }
+    # One left-to-right pass over the line, carrying state between lines.
+    # Strings and comments are recognised in the same scan, because doing them
+    # in two passes gets both wrong: a // inside a string is not a comment, and
+    # an apostrophe inside a comment is not a string.
+    function strip(s,   out, n, i, c, c3, j, d, cj, p) {
+        out = ""; n = length(s); i = 1
+        while (i <= n) {
+            if (st == "blk") {
+                p = index(substr(s, i), "*/")
+                if (p == 0) return out
+                i = i + p + 1; st = ""
+                continue
+            }
+            c = substr(s, i, 1)
+            if (st == "str") {
+                # An interpolated expression inside a string IS code.
+                # "key=${store.fingerprint()}" is a real call, and blanking it
+                # is how a live symbol was reported dead on real Kotlin: both
+                # of its call sites sat inside string templates.
+                if (c == "$" && substr(s, i + 1, 1) == "{") {
+                    d = 0; j = i + 1
+                    while (j <= n) {
+                        cj = substr(s, j, 1)
+                        if (cj == "{") d++
+                        else if (cj == "}") { d--; if (d == 0) break }
+                        j++
+                    }
+                    out = out " " substr(s, i + 2, j - i - 2) " "
+                    i = j + 1
+                    continue
+                }
+                if (c == "\\") { i += 2; continue }
+                if (q == dq3 || q == sq3) {
+                    if (substr(s, i, 3) == q) { st = ""; q = ""; i += 3; continue }
+                } else if (c == q) { st = ""; q = ""; i++; continue }
+                i++
+                continue
+            }
+            c3 = substr(s, i, 3)
+            if (c3 == dq3 || c3 == sq3) { st = "str"; q = c3; i += 3; continue }
+            if (c == dq || c == sq || c == bt) { st = "str"; q = c; i++; continue }
+            if (m == "//" && substr(s, i, 2) == "/*") { st = "blk"; i += 2; continue }
+            if (substr(s, i, length(m)) == m) return out
+            out = out c; i++
+        }
+        return out
+    }
+    FNR == 1 { st = ""; q = ""; hw = ""; m = marker(FILENAME); shf = isshell(FILENAME) }
     {
-        raw = $0; code = raw
-        if (ENVIRON["RF_NOSTRIP"] != "1") {
-        if (inblock) {
-            p = index(code, "*/")
-            if (p == 0) { code = "" } else { code = substr(code, p + 2); inblock = 0 }
+        raw = $0
+        if (ENVIRON["RF_NOSTRIP"] == "1") code = raw
+        else if (st == "here") {
+            t = raw; sub(/^[ \t]+/, "", t); sub(/[ \t]+$/, "", t)
+            if (t == hw) { st = ""; hw = "" }
+            code = ""
+        } else {
+            code = strip(raw)
+            # Only a triple quote or a backtick spans lines. A single quote or
+            # double quote left open at end of line is an apostrophe in prose,
+            # not a string: carrying it over blanked the rest of the file.
+            if (st == "str" && q != dq3 && q != sq3 && q != bt) { st = ""; q = "" }
+            # Shell heredoc. Restricted to shell files because << is a shift
+            # operator everywhere else.
+            if (shf && st == "") {
+                p = index(raw, "<<")
+                if (p > 0) {
+                    w = substr(raw, p + 2)
+                    sub(/^-/, "", w)
+                    sub(/^[ \t]+/, "", w)
+                    c = substr(w, 1, 1)
+                    if (c == dq || c == sq) w = substr(w, 2)
+                    if (match(w, /^[A-Za-z_][A-Za-z0-9_]*/)) {
+                        hw = substr(w, 1, RLENGTH); st = "here"
+                    }
+                }
+            }
         }
-        code = strip_strings(code)
-        while ((a = index(code, "/*")) > 0) {
-            b = index(substr(code, a + 2), "*/")
-            if (b == 0) { code = substr(code, 1, a - 1); inblock = 1; break }
-            code = substr(code, 1, a - 1) " " substr(code, a + 2 + b + 1)
-        }
-        p = index(code, m)
-        if (p > 0) code = substr(code, 1, p - 1)
-        }
-
         if (code ~ ENVIRON["RF_SYM"]) {
-            if (code ~ ENVIRON["RF_DECL"])      bucket = "decl"
-            else if (code ~ ENVIRON["RF_IMP"])  bucket = "imp"
-            else                                bucket = "call"
+            if (code ~ ENVIRON["RF_IMP"]) bucket = "imp"
+            else                          bucket = "code"
         } else if (raw ~ ENVIRON["RF_SYM"]) {
             bucket = "text"
         } else next
-        printf "%s\t%s:%d:%s\n", bucket, FILENAME, FNR, raw
+        printf "%s\t%s\t%s:%d:%s\n", bucket, FILENAME, FILENAME, FNR, raw
     }
-    ' $(cat "$TMP/hitfiles") > "$TMP/cls" 2>/dev/null || : > "$TMP/cls"
+    ' "$@" > "$TMP/cls" 2>/dev/null || : > "$TMP/cls"
 
-    for b in decl imp call text; do
-        grep "^$b	" "$TMP/cls" 2>/dev/null | cut -f2- > "$TMP/$b" || : > "$TMP/$b"
-    done
-    dcount=$(grep -c . < "$TMP/decl" || true)
-    icount=$(grep -c . < "$TMP/imp" || true)
-    ccount=$(grep -c . < "$TMP/text" || true)
-    count=$(grep -c . < "$TMP/call" || true)
-    cp "$TMP/call" "$TMP/callers"
+    # The unit is the FILE, not the hit. A declaration needs no recognising:
+    # it is simply the one file the name occurs in.
+    grep "^code	" "$TMP/cls" 2>/dev/null | cut -f2 | sort -u > "$TMP/codefiles"
+    cut -f2 "$TMP/cls" 2>/dev/null | sort -u > "$TMP/allfiles"
+    comm -23 "$TMP/allfiles" "$TMP/codefiles" > "$TMP/textfiles"
+    nall=$(grep -c . < "$TMP/allfiles" || true)
+    ncode=$(grep -c . < "$TMP/codefiles" || true)
+    ntext=$(grep -c . < "$TMP/textfiles" || true)
+    nhits=$(grep -c "^code	" "$TMP/cls" || true)
+    # Break point: shifts the one-file threshold, so every "мёртв" verdict must
+    # turn into "жив" and the suite must notice.
+    _broken single && ncode=$((ncode + 1))
 
     printf 'redfirst wired "%s"\n' "$symbol"
     scanned_root_note
-    printf '  всего совпадений      %s\n' "$total"
-    printf '  из них объявления     %s\n' "$dcount"
-    printf '  комментарии/строки    %s\n' "$ccount"
-    printf '  импорты (не вызов)    %s\n' "$icount"
-    printf '  ОСТАЁТСЯ ВЫЗОВОВ      %s\n' "$count"
-    if [ "$dcount" != "0" ]; then
-        printf 'Объявлено:\n'; head -n 3 "$TMP/decl" | sed 's/^/  /'
-    fi
-    if [ "$count" = "0" ]; then
-        printf 'Ноль вызовов. Этой вещи нет в работающей системе, сколько бы тестов её ни покрывало.\n'
-        printf 'Классификация показана выше — если она неверна, скажите, и разберём вручную.\n'
+    printf '  файлов с упоминанием  %s\n' "$nall"
+    printf '  из них в коде         %s\n' "$ncode"
+    printf '  только вне кода       %s\n' "$ntext"
+    printf '  упоминаний в коде     %s\n' "$nhits"
+
+    if [ "$ncode" = "0" ]; then
+        printf 'В КОДЕ ИМЯ НЕ ВСТРЕЧАЕТСЯ НИГДЕ — только в строках, комментариях и импортах:\n'
+        grep -v "^code	" "$TMP/cls" | cut -f3 | head -n 5 | sed 's/^/  /'
+        printf 'Упоминание — не использование. Вещи нет в работающей системе.\n'
         exit 1
     fi
-    printf 'Вызывается:\n'; head -n 8 "$TMP/callers" | sed 's/^/  /'
-    [ "$count" -gt 8 ] && printf '  … и ещё %s\n' "$((count - 8))"
+    if [ "$ncode" = "1" ]; then
+        # One file, one mention: nothing names this, including itself. One file,
+        # several mentions: it is used, but only by its own file. The two need
+        # different words — a private helper is normal, a service nobody outside
+        # calls is not — and the difference is countable without parsing syntax.
+        if [ "$nhits" = "1" ]; then
+            printf 'ЕДИНСТВЕННОЕ УПОМИНАНИЕ во всём проекте:\n'
+            grep "^code	" "$TMP/cls" | cut -f3 | sed 's/^/  /'
+            printf 'Если это объявление — вещь мертва: её не называет никто, включая её саму.\n'
+            printf 'Если это вызов — объявление лежит вне просканированных масок.\n'
+        else
+            printf 'ТОЛЬКО ВНУТРИ СВОЕГО ФАЙЛА: %s упоминаний, все в одном файле.\n' "$nhits"
+            grep "^code	" "$TMP/cls" | cut -f3 | head -n 8 | sed 's/^/  /'
+            printf 'За пределами этого файла имени нет. Для частного помощника это норма,\n'
+            printf 'для класса или сервиса — повод спросить, кто должен был его звать.\n'
+        fi
+        if [ "$ntext" != "0" ]; then
+            printf 'Ещё упомянуто вне кода (в счёт не идёт):\n'
+            grep -v "^code	" "$TMP/cls" | cut -f3 | head -n 3 | sed 's/^/  /'
+        fi
+        exit 1
+    fi
+    printf 'ЖИВЁТ: имя встречается в коде %s файлов.\n' "$ncode"
+    grep "^code	" "$TMP/cls" | cut -f3 | head -n 8 | sed 's/^/  /'
+    [ "$nhits" -gt 8 ] && printf '  … и ещё %s упоминаний\n' "$((nhits - 8))"
     exit 0
 }
 
@@ -645,7 +709,7 @@ redfirst — детерминированные точки останова дл
   redfirst init                 определить проект, создать конфиг
   redfirst due [--quiet]        просроченные проверки восстановления
   redfirst verified "<имя>"     отметить актив проверенным сегодня
-  redfirst wired <Symbol>       разбор ссылок; ноль вызовов = мёртвый код
+  redfirst wired <Symbol>       в скольких файлах имя есть в коде; один — мёртвый
   redfirst samples <pattern>    число + образцы начала, середины и конца
   redfirst counter <term...>    поиск того, чего якобы нет
 
