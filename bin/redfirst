@@ -1202,8 +1202,19 @@ $_t	$(cksum < "$_t")"
     done || _bad=1
     [ "$_bad" = 0 ] || exit 2
 
-    printf 'Build exited %s. Last lines:\n' "$rc"
-    tail -n 8 "$TMP/build.out" | sed 's/^/  /'
+    # Хвост вывода сборки бесполезен: у gradle там подвал про --stacktrace, а
+    # причина стоит выше. Показывается то, что похоже на ошибку, и только если
+    # похожего нет — последние строки. Инструмент не знает про gradle и знать
+    # не должен, поэтому образцы общие, а откат — честный.
+    printf 'Build exited %s.' "$rc"
+    _errs=$(grep -inE '(^|[^a-z])(e:|error:|error |failed|unresolved|cannot find)' "$TMP/build.out" 2>/dev/null | head -n 6)
+    if [ "$rc" != "0" ] && [ -n "$_errs" ]; then
+        printf ' What looks like the cause:\n'
+        printf '%s\n' "$_errs" | sed 's/^[0-9]*://' | sed 's/^/  /'
+    else
+        printf ' Last lines:\n'
+        tail -n 8 "$TMP/build.out" | sed 's/^/  /'
+    fi
     printf 'Everything is back, byte for byte.\n\n'
 
     if [ "$rc" != "0" ]; then
