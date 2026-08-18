@@ -151,9 +151,18 @@ is_noise() {
 list_sources() {
     [ -f "$TMP/files" ] && { cat "$TMP/files"; return; }
     : > "$TMP/files"
+    # Каталоги сборки отсекаются в самом обходе, а не после него. На настоящем
+    # Android-проекте дерево — 19169 файлов, из них 17669 под build/, и каждая
+    # маска обходила их заново, чтобы is_noise потом всё это выбросил.
+    # Отсекается ровно то, что is_noise и так считает шумом: список вердиктов
+    # от этого не меняется, меняется только цена обхода.
     source_patterns | while IFS= read -r pat; do
         [ -n "$pat" ] || continue
-        find . -type f -name "$pat" 2>/dev/null || true
+        find . -type d \( -name build -o -name .git -o -name .gradle \
+                          -o -name node_modules -o -name vendor -o -name third_party \
+                          -o -name dist -o -name out -o -name target -o -name obj \
+                          -o -name __pycache__ -o -name .venv -o -name venv -o -name .tox \) \
+               -prune -o -type f -name "$pat" -print 2>/dev/null || true
     done | sort -u | while IFS= read -r f; do
         is_noise "$f" || printf '%s\n' "$f"
     done > "$TMP/files"
@@ -195,13 +204,34 @@ file_list_or_die() {
 }
 
 # Match with line numbers across the file list.
+#
+# One grep per BATCH of files, not per file. The previous form forked grep and
+# sed for every file: on a 227-file Android project that is 454 processes for a
+# single `wired`, and 14.8 seconds under Git Bash, of which 11.4 were system
+# time. Not work - process creation. Measured on a real sweep that would have
+# taken 110 minutes.
+#
+# `/dev/null` at the end of each batch forces grep to print the file name even
+# when a batch holds a single file, which is exactly what the manual `sed`
+# prefix used to do. Batching keeps the command line inside every platform's
+# limit; positional parameters are function-local in POSIX sh and are restored
+# on return, so the caller's `$@` is untouched.
 grep_sources() {
     re="$1"
-    xargs_ok=1
+    set --
+    _gs=0
     while IFS= read -r f; do
-        grep -En -- "$re" "$f" 2>/dev/null | sed "s|^|$f:|" || true
+        set -- "$@" "$f"
+        _gs=$((_gs + 1))
+        if [ "$_gs" -ge 200 ]; then
+            grep -En -- "$re" "$@" /dev/null 2>/dev/null || true
+            set --; _gs=0
+        fi
     done < "$TMP/list"
-    [ "$xargs_ok" = 1 ]
+    if [ "$_gs" -gt 0 ]; then
+        grep -En -- "$re" "$@" /dev/null 2>/dev/null || true
+    fi
+    return 0
 }
 
 # ── classification of a match ────────────────────────────────────────────────
