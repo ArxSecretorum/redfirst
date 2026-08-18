@@ -20,3 +20,11 @@ removable-leaves-nothing  ~ green ~ 0 ~ CLEAN ~ @removable ~ @sh sh "$RF" remova
 removable-verdict-honest  ~ green ~ 0 ~ NOT covered ~ @removable ~ @sh sh "$RF" removable Dead.kt ~ 2026-08-18: вердикт называет, чего он НЕ покрывает — иначе «сборка не возражает» прочтётся как «удалять безопасно»
 removable-oracle-weight   ~ green ~ 0 ~ dynamic loading ~ @removable ~ @sh sh "$RF" removable Dead.kt ~ 2026-08-18: молчание компилятора весит ровно столько, сколько в проекте рефлексии и DI, и это считается, а не предполагается
 removable-refuses-dirty   ~ red   ~ 2 ~ working tree has changes ~ @removable ~ @sh git init -q .; git -c user.email=t@t -c user.name=t add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -q -m base >/dev/null 2>&1; printf 'x\n' > extra.kt; sh "$RF" removable Dead.kt ~ 2026-08-18: на грязном дереве возврату файла верить нельзя, поэтому эксперимент не начинается
+
+# ── удаление парой: файл и его собственный тест ─────────────────────────────
+# Найдено 2026-08-18 на ArxRemote: три файла из четырёх держатся собственными
+# тестами и ничем больше. Это и есть история «шесть зелёных тестов, ноль
+# вызовов» — удалять такое надо парой, иначе эксперимент всегда красный.
+removable-pair-one-fails  ~ red   ~ 1 ~ STILL IN USE ~ @removable ~ @sh sh "$RF" removable Orphan.kt ~ 2026-08-18: файл, который держит только собственный тест, поодиночке не убирается
+removable-pair-both-pass  ~ green ~ 0 ~ do not object ~ @removable ~ @sh sh "$RF" removable Orphan.kt OrphanTest.kt ~ 2026-08-18: пара уходит вместе — и это первый случай, где команда принимает больше одного файла
+removable-pair-restores   ~ green ~ 0 ~ BOTH-BACK ~ @removable ~ @sh sh "$RF" removable Orphan.kt OrphanTest.kt >/dev/null 2>&1; [ -f Orphan.kt ] && [ -f OrphanTest.kt ] && echo BOTH-BACK ~ 2026-08-18: возвращаются оба, а не первый

@@ -1098,41 +1098,65 @@ cmd_log() {
 # и печатается, а не оставляется на догадку читателю.
 
 BUILDCMD="$CONFIG_DIR/build"
-_rm_target=""; _rm_aside=""
+_rm_list=""       # список файлов через перевод строки
+_rm_sums=""       # "путь<TAB>сумма" на строку
 
 _removable_restore() {
-    [ -n "$_rm_aside" ] || return 0
-    if [ -e "$_rm_aside" ]; then
-        mv "$_rm_aside" "$_rm_target" 2>/dev/null || \
-            printf 'redfirst: COULD NOT RESTORE %s - the content is lying at %s\n' \
-                   "$_rm_target" "$_rm_aside" >&2
-    fi
+    [ -n "$_rm_list" ] || return 0
+    printf '%s\n' "$_rm_list" | while IFS= read -r _f; do
+        [ -n "$_f" ] || continue
+        if [ -e "$_f.redfirst-removed" ]; then
+            mv "$_f.redfirst-removed" "$_f" 2>/dev/null || \
+                printf 'redfirst: COULD NOT RESTORE %s - the content is at %s.redfirst-removed\n' \
+                       "$_f" "$_f" >&2
+        fi
+    done
     return 0
 }
 
 cmd_removable() {
-    [ $# -ge 1 ] || die 'usage: redfirst removable <file>'
-    _rm_target="$1"
-    [ -f "$_rm_target" ] || die "not a file: $_rm_target"
+    [ $# -ge 1 ] || die 'usage: redfirst removable <file> [file...]'
     [ -f "$BUILDCMD" ] || die "no command to build with. Put the command that builds and tests this project into $BUILDCMD, one line"
     build=$(grep -v '^[[:space:]]*#' "$BUILDCMD" 2>/dev/null | grep -v '^[[:space:]]*$' | head -n 1)
     [ -n "$build" ] || die "no command to build with: $BUILDCMD holds only comments"
 
-    # Грязное дерево делает возврат неотличимым от чужой правки, а проверку
-    # контрольной суммой — бессмысленной.
+    # Файлы принимаются пачкой, потому что вещь и её собственный тест уходят
+    # вместе. Поодиночке такая пара всегда красная, и это верный ответ на
+    # неверный вопрос: тест — не пользователь, он часть удаляемого.
+    for _t in "$@"; do
+        [ -f "$_t" ] || die "not a file: $_t"
+        [ -e "$_t.redfirst-removed" ] && die "$_t.redfirst-removed is already there - an earlier run did not finish. Move it back by hand"
+        _rm_list="$_rm_list
+$_t"
+        _rm_sums="$_rm_sums
+$_t	$(cksum < "$_t")"
+    done
+
     if git rev-parse --git-dir >/dev/null 2>&1; then
         if [ -n "$(git status --porcelain 2>/dev/null | grep -vF "$CONFIG_DIR" | head -n 1)" ]; then
             die 'the working tree has changes. Commit or stash them first: on a dirty tree a restore cannot be told from a leftover'
         fi
     fi
 
-    _rm_aside="$_rm_target.redfirst-removed"
-    [ -e "$_rm_aside" ] && die "$_rm_aside is already there - an earlier run did not finish. Move it back by hand"
-    sum_before=$(cksum < "$_rm_target")
-
-    printf 'redfirst removable: %s\n' "$_rm_target"
+    printf 'redfirst removable: %s\n' "$*"
     scanned_root_note
     printf 'Build command: %s\n\n' "$build"
+
+    # Базовая линия. Без неё красное после переноса ничего не значит: проект мог
+    # не собираться и до опыта, и тогда вывод сделан из различия, созданного
+    # самим измерением.
+    printf 'Baseline, nothing moved yet...\n'
+    set +e
+    ( eval "$build" ) > "$TMP/base.out" 2>&1
+    _brc=$?
+    set -e
+    if [ "$_brc" != "0" ]; then
+        printf 'REFUSED: the build already fails on an untouched tree (exit %s):\n' "$_brc"
+        tail -n 6 "$TMP/base.out" | sed 's/^/  /'
+        printf 'Nothing was moved. Until the baseline is green this experiment proves nothing.\n'
+        exit 2
+    fi
+    printf 'Baseline is green.\n\n'
 
     file_list_or_die
     printf 'What a silent build is worth here:\n'
@@ -1153,7 +1177,10 @@ cmd_removable() {
     trap '_removable_restore; cleanup; exit 141' PIPE
     trap '_removable_restore; cleanup; exit 129' HUP
 
-    mv "$_rm_target" "$_rm_aside" || die "could not move $_rm_target aside"
+    printf '%s\n' "$_rm_list" | while IFS= read -r _f; do
+        [ -n "$_f" ] || continue
+        mv "$_f" "$_f.redfirst-removed" || exit 1
+    done || die 'could not move the files aside'
     printf 'Moved aside, building...\n'
     set +e
     ( eval "$build" ) > "$TMP/build.out" 2>&1
@@ -1163,31 +1190,36 @@ cmd_removable() {
 
     # Возврат не заявляется, а проверяется. Инструмент, который трогает чужие
     # файлы, обязан доказывать, что положил их обратно.
-    if [ ! -f "$_rm_target" ]; then
-        printf 'FAILED TO RESTORE: %s is not back. Its content is at %s\n' "$_rm_target" "$_rm_aside"
-        exit 2
-    fi
-    sum_after=$(cksum < "$_rm_target")
-    if [ "$sum_before" != "$sum_after" ]; then
-        printf 'FAILED TO RESTORE: %s came back changed.\n' "$_rm_target"
-        exit 2
-    fi
+    _bad=0
+    printf '%s\n' "$_rm_sums" | while IFS='	' read -r _f _s; do
+        [ -n "$_f" ] || continue
+        if [ ! -f "$_f" ]; then
+            printf 'FAILED TO RESTORE: %s is not back\n' "$_f"; exit 1
+        fi
+        if [ "$(cksum < "$_f")" != "$_s" ]; then
+            printf 'FAILED TO RESTORE: %s came back changed\n' "$_f"; exit 1
+        fi
+    done || _bad=1
+    [ "$_bad" = 0 ] || exit 2
 
     printf 'Build exited %s. Last lines:\n' "$rc"
     tail -n 8 "$TMP/build.out" | sed 's/^/  /'
-    printf '%s is back, byte for byte.\n\n' "$_rm_target"
+    printf 'Everything is back, byte for byte.\n\n'
 
     if [ "$rc" != "0" ]; then
-        printf 'STILL IN USE: without this file the project does not build.\n'
+        printf 'STILL IN USE: without those files the project does not build.\n'
         printf 'This verdict is the trustworthy one - the compiler found the reference itself.\n'
+        printf 'If the only user is its own test, name the test here too and run again.\n'
         exit 1
     fi
-    _base=${_rm_target##*/}; _base=${_base%.*}
-    printf 'The build and the tests do not object to its absence.\n'
+    printf 'The build and the tests do not object to their absence.\n'
     printf 'That is NOT the same as "safe to delete". NOT covered by this run:\n'
     printf '  names resolved while running, dependency injection, serialisation by name,\n'
     printf '  keep rules for the shrinker, and anything outside this project that names it.\n'
-    printf 'Look where a compiler does not: redfirst counter %s\n' "$_base"
+    for _t in "$@"; do
+        _b=${_t##*/}; _b=${_b%.*}
+        printf 'Look where a compiler does not: redfirst counter %s\n' "$_b"
+    done
     exit 0
 }
 
