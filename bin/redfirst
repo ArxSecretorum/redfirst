@@ -1078,6 +1078,119 @@ cmd_log() {
     exit 0
 }
 
+# ── removable ────────────────────────────────────────────────────────────────
+# `wired` говорит, что на имя не ссылаются. Безопасно ли его удалить, он не
+# говорит и не сможет: распознавание объявлений провалилось на шести формах из
+# семи и выброшено, а любой новый разборщик будет ошибаться так же уверенно.
+#
+# Поэтому здесь не анализ, а эксперимент: отодвинуть файл, запустить сборку и
+# тесты, которые объявил сам проект, вернуть файл. Компилятор знает о ссылках
+# больше, чем узнает любая регулярка в этом файле.
+#
+# Два свойства важнее вердикта:
+#   * инструмент НИКОГДА не удаляет. Файл переименовывается и переименовывается
+#     обратно; даже смерть машины посреди прогона оставляет содержимое на диске
+#     под очевидным именем;
+#   * возврат ПРОВЕРЯЕТСЯ контрольной суммой, а не предполагается.
+#
+# И вердикт стоит ровно столько, сколько стоит оракул: молчание сборки в проекте
+# с рефлексией не доказывает почти ничего. Поэтому вес этого молчания считается
+# и печатается, а не оставляется на догадку читателю.
+
+BUILDCMD="$CONFIG_DIR/build"
+_rm_target=""; _rm_aside=""
+
+_removable_restore() {
+    [ -n "$_rm_aside" ] || return 0
+    if [ -e "$_rm_aside" ]; then
+        mv "$_rm_aside" "$_rm_target" 2>/dev/null || \
+            printf 'redfirst: COULD NOT RESTORE %s - the content is lying at %s\n' \
+                   "$_rm_target" "$_rm_aside" >&2
+    fi
+    return 0
+}
+
+cmd_removable() {
+    [ $# -ge 1 ] || die 'usage: redfirst removable <file>'
+    _rm_target="$1"
+    [ -f "$_rm_target" ] || die "not a file: $_rm_target"
+    [ -f "$BUILDCMD" ] || die "no command to build with. Put the command that builds and tests this project into $BUILDCMD, one line"
+    build=$(grep -v '^[[:space:]]*#' "$BUILDCMD" 2>/dev/null | grep -v '^[[:space:]]*$' | head -n 1)
+    [ -n "$build" ] || die "no command to build with: $BUILDCMD holds only comments"
+
+    # Грязное дерево делает возврат неотличимым от чужой правки, а проверку
+    # контрольной суммой — бессмысленной.
+    if git rev-parse --git-dir >/dev/null 2>&1; then
+        if [ -n "$(git status --porcelain 2>/dev/null | grep -vF "$CONFIG_DIR" | head -n 1)" ]; then
+            die 'the working tree has changes. Commit or stash them first: on a dirty tree a restore cannot be told from a leftover'
+        fi
+    fi
+
+    _rm_aside="$_rm_target.redfirst-removed"
+    [ -e "$_rm_aside" ] && die "$_rm_aside is already there - an earlier run did not finish. Move it back by hand"
+    sum_before=$(cksum < "$_rm_target")
+
+    printf 'redfirst removable: %s\n' "$_rm_target"
+    scanned_root_note
+    printf 'Build command: %s\n\n' "$build"
+
+    file_list_or_die
+    printf 'What a silent build is worth here:\n'
+    _any=0
+    for _pat in 'Class\.forName' 'ServiceLoader' '@Inject' '@HiltAndroidApp' \
+                '@Serializable' 'getDeclaredMethod' 'getDeclaredField'; do
+        _n=$(grep_sources "$_pat" 2>/dev/null | cut -d: -f1 | sort -u | grep -c . || true)
+        if [ "$_n" != "0" ]; then printf '  %-22s in %s files\n' "$_pat" "$_n"; _any=1; fi
+    done
+    if [ "$_any" = 0 ]; then
+        printf '  No dynamic loading found, so a silent build weighs a lot in this project.\n\n'
+    else
+        printf '  Dynamic loading is present, so a silent build weighs LESS here: those\n'
+        printf '  names are resolved while running, and no compiler notices them missing.\n\n'
+    fi
+
+    trap '_removable_restore; cleanup' EXIT INT TERM
+    trap '_removable_restore; cleanup; exit 141' PIPE
+    trap '_removable_restore; cleanup; exit 129' HUP
+
+    mv "$_rm_target" "$_rm_aside" || die "could not move $_rm_target aside"
+    printf 'Moved aside, building...\n'
+    set +e
+    ( eval "$build" ) > "$TMP/build.out" 2>&1
+    rc=$?
+    set -e
+    _removable_restore
+
+    # Возврат не заявляется, а проверяется. Инструмент, который трогает чужие
+    # файлы, обязан доказывать, что положил их обратно.
+    if [ ! -f "$_rm_target" ]; then
+        printf 'FAILED TO RESTORE: %s is not back. Its content is at %s\n' "$_rm_target" "$_rm_aside"
+        exit 2
+    fi
+    sum_after=$(cksum < "$_rm_target")
+    if [ "$sum_before" != "$sum_after" ]; then
+        printf 'FAILED TO RESTORE: %s came back changed.\n' "$_rm_target"
+        exit 2
+    fi
+
+    printf 'Build exited %s. Last lines:\n' "$rc"
+    tail -n 8 "$TMP/build.out" | sed 's/^/  /'
+    printf '%s is back, byte for byte.\n\n' "$_rm_target"
+
+    if [ "$rc" != "0" ]; then
+        printf 'STILL IN USE: without this file the project does not build.\n'
+        printf 'This verdict is the trustworthy one - the compiler found the reference itself.\n'
+        exit 1
+    fi
+    _base=${_rm_target##*/}; _base=${_base%.*}
+    printf 'The build and the tests do not object to its absence.\n'
+    printf 'That is NOT the same as "safe to delete". NOT covered by this run:\n'
+    printf '  names resolved while running, dependency injection, serialisation by name,\n'
+    printf '  keep rules for the shrinker, and anything outside this project that names it.\n'
+    printf 'Look where a compiler does not: redfirst counter %s\n' "$_base"
+    exit 0
+}
+
 # ── due ──────────────────────────────────────────────────────────────────────
 # Any field this cannot parse counts as OVERDUE. 0.1.0 treated an unreadable
 # date, a non-numeric period and a stray separator as "fine" and printed green.
@@ -1344,6 +1457,7 @@ redfirst - deterministic checkpoints for AI-assisted development.
   redfirst wired <Symbol>       in how many files the name is in code; one is dead
   redfirst samples <pattern>    a count plus samples from start, middle and end
   redfirst counter <term...>    search for what is claimed absent
+  redfirst removable <file>     move it aside, build, put it back - never deletes
 
 Exit codes: 0 clean, 1 something to look at, 2 could not check.
 Exit 2 never means "all fine".
@@ -1368,6 +1482,7 @@ case "$cmd" in
     wired)    cmd_wired "$@" ;;
     samples)  cmd_samples "$@" ;;
     counter)  cmd_counter "$@" ;;
+    removable) cmd_removable "$@" ;;
     -h|--help|help) usage ;;
     -v|--version)   printf 'redfirst %s\n' "$VERSION" ;;
     *) die "unknown command: $cmd" ;;

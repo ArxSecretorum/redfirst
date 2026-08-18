@@ -1,0 +1,22 @@
+# removable — единственный честный ответ на вопрос «можно ли это удалить».
+# id ~ напр ~ код ~ подстрока ~ стенд ~ команда ~ происхождение
+#
+# Анализом на этот вопрос не отвечают: распознавание объявлений уже провалилось
+# на шести формах из семи и выброшено. Отвечает эксперимент — отодвинуть файл,
+# собрать, вернуть. Компилятор и тесты знают больше любого разборщика.
+#
+# Два свойства важнее самого вердикта, и оба проверяются здесь:
+# инструмент НИКОГДА не удаляет, и он ВОЗВРАЩАЕТ файл при любом исходе.
+
+removable-needs-command   ~ red   ~ 2 ~ no command to build with ~ @kotlin    ~ @sh sh "$RF" removable src/main/kotlin/Helper.kt ~ 2026-08-18: без объявленной команды сборки эксперимент ставить нечем, и гадать инструмент не будет
+removable-needs-file      ~ red   ~ 2 ~ not a file ~ @removable ~ @sh sh "$RF" removable NoSuchFile.kt ~ 2026-08-18: отказ на несуществующем файле, а не молчаливый успех
+removable-dead-passes     ~ green ~ 0 ~ do not object ~ @removable ~ @sh sh "$RF" removable Dead.kt ~ 2026-08-18: файл, на который никто не ссылается, сборку не ломает
+removable-used-fails      ~ red   ~ 1 ~ STILL IN USE ~ @removable ~ @sh sh "$RF" removable Live.kt ~ 2026-08-18: файл, на который ссылаются, обязан дать красное — и это единственный вердикт, которому можно верить полностью
+removable-shows-error     ~ red   ~ 1 ~ unresolved reference ~ @removable ~ @sh sh "$RF" removable Live.kt ~ 2026-08-18: человеку показывается, ЧЕМ упала сборка, а не только что упала
+removable-restores-used   ~ green ~ 0 ~ RESTORED ~ @removable ~ @sh sh "$RF" removable Live.kt >/dev/null 2>&1; [ -f Live.kt ] && echo RESTORED ~ 2026-08-18: файл возвращается и при провале сборки
+removable-restores-dead   ~ green ~ 0 ~ RESTORED ~ @removable ~ @sh sh "$RF" removable Dead.kt >/dev/null 2>&1; [ -f Dead.kt ] && echo RESTORED ~ 2026-08-18: файл возвращается и при успехе — «мёртв» не значит «удалён»
+removable-byte-identical  ~ green ~ 0 ~ SAME ~ @removable ~ @sh a=$(cksum < Live.kt); sh "$RF" removable Live.kt >/dev/null 2>&1; b=$(cksum < Live.kt); [ "$a" = "$b" ] && echo SAME ~ 2026-08-18: возвращён тот же файл побайтово, а не «примерно тот же»
+removable-leaves-nothing  ~ green ~ 0 ~ CLEAN ~ @removable ~ @sh sh "$RF" removable Dead.kt >/dev/null 2>&1; ls *.redfirst-removed >/dev/null 2>&1 || echo CLEAN ~ 2026-08-18: отодвинутая копия не остаётся в дереве
+removable-verdict-honest  ~ green ~ 0 ~ NOT covered ~ @removable ~ @sh sh "$RF" removable Dead.kt ~ 2026-08-18: вердикт называет, чего он НЕ покрывает — иначе «сборка не возражает» прочтётся как «удалять безопасно»
+removable-oracle-weight   ~ green ~ 0 ~ dynamic loading ~ @removable ~ @sh sh "$RF" removable Dead.kt ~ 2026-08-18: молчание компилятора весит ровно столько, сколько в проекте рефлексии и DI, и это считается, а не предполагается
+removable-refuses-dirty   ~ red   ~ 2 ~ working tree has changes ~ @removable ~ @sh git init -q .; git -c user.email=t@t -c user.name=t add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -q -m base >/dev/null 2>&1; printf 'x\n' > extra.kt; sh "$RF" removable Dead.kt ~ 2026-08-18: на грязном дереве возврату файла верить нельзя, поэтому эксперимент не начинается

@@ -194,6 +194,7 @@ Manually:
   redfirst wired <Symbol>          in how many files the name is in code
   redfirst samples <pattern>       a count together with what it counted
   redfirst counter <term>          search for what is claimed absent
+  redfirst removable <file>        move aside, build, put back - never deletes
 
 First, write your assets into .redfirst/irreplaceable - an empty list
 means the hook stays silent, and its silence will be undeserved.
