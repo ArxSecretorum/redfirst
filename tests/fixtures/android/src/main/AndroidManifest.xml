@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- GhostReceiver was removed; this line is prose about it -->
+    <application android:name=".CompanionApplication">
+        <receiver android:name=".StartupReceiver" android:exported="false" />
+    </application>
+</manifest>

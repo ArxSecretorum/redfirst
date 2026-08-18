@@ -99,7 +99,12 @@ source_patterns() {
         warn "$SOURCES is empty or all comments - falling back to auto-detection"
     fi
     found=""
-    [ -f build.gradle.kts ] || [ -f build.gradle ] || [ -f settings.gradle.kts ] && found="*.kt *.java *.kts"
+    # XML included on purpose: in Android half of the wiring lives there, not in
+    # the code. Measured on a real project — of nine symbols reported as having a
+    # single mention, five were an Application, a Service and Receivers wired
+    # through the manifest. Without this the tool calls them dead, confidently,
+    # on the kind of project it was written for.
+    [ -f build.gradle.kts ] || [ -f build.gradle ] || [ -f settings.gradle.kts ] && found="*.kt *.java *.kts *.xml"
     [ -f pyproject.toml ] || [ -f setup.py ] || [ -f requirements.txt ] && found="$found *.py"
     [ -f package.json ] && found="$found *.ts *.tsx *.js *.jsx *.mjs *.cjs *.svelte *.vue"
     [ -f Cargo.toml ] && found="$found *.rs"
@@ -231,6 +236,7 @@ CLASSIFIER='
         dq3 = dq dq dq; sq3 = sq sq sq
     }
     function isshell(f) { return (f ~ /\.(sh|bash|zsh|ksh)$/) }
+    function isxml(f)   { return (f ~ /\.(xml|xhtml|plist)$/) }
     function marker(f) {
         if (f ~ /\.(py|rb|sh|bash|zsh|ksh|pl|pm|r|yaml|yml|toml|conf|cfg)$/) return "#"
         if (f ~ /\.(sql|lua|hs|elm|adb|ads)$/) return "--"
@@ -244,9 +250,9 @@ CLASSIFIER='
         out = ""; n = length(s); i = 1; hpos = 0
         while (i <= n) {
             if (st == "blk") {
-                p = index(substr(s, i), "*/")
+                p = index(substr(s, i), blkend)
                 if (p == 0) return out
-                i = i + p + 1; st = ""
+                i = i + p + length(blkend) - 1; st = ""
                 continue
             }
             c = substr(s, i, 1)
@@ -272,6 +278,15 @@ CLASSIFIER='
                     if (substr(s, i, 3) == q) { st = ""; q = ""; i += 3; continue }
                 } else if (c == q) { st = ""; q = ""; i++; continue }
                 i++
+                continue
+            }
+            # XML is the one place where a quoted value is not a literal to be
+            # thrown away: `android:name=".CompanionApplication"` IS the wiring.
+            # Only comments are stripped here, and they are <!-- --> rather than
+            # anything the C-like branch below knows about.
+            if (xml) {
+                if (substr(s, i, 4) == "<!--") { st = "blk"; i += 4; continue }
+                out = out c; i++
                 continue
             }
             c3 = substr(s, i, 3)
@@ -301,6 +316,7 @@ CLASSIFIER='
     }
     FNR == 1 {
         st = ""; q = ""; hw = ""; m = marker(FILENAME); shf = isshell(FILENAME)
+        xml = isxml(FILENAME); blkend = xml ? "-->" : "*/"
         # A file with no extension is not a mystery - its first line says what
         # it is. `bin/redfirst` and `tests/run` are exactly such files, and
         # without this their # comments were never stripped: the pass was

@@ -18,6 +18,19 @@ wired-alive-not-correct ~ red  ~ 0 ~ NOTHING about whether it is correct ~ @kotl
 wired-only-in-test     ~ red   ~ 1 ~ A SINGLE MENTION && n:files=1 && n:code=1 && sum ~ @kotlin ~ wired TestedOnly ~ 2026-08-16: вызов только из теста — не production
 wired-audit-not-test   ~ green ~ 0 ~ AUDIT.kt ~ @kotlin ~ wired Helper ~ 2026-08-16: шаблон *IT.* глотал AUDIT — файл обязан числиться боевым
 wired-dead-go-receiver ~ red   ~ 1 ~ ONLY INSIDE ITS OWN FILE && n:code=1 && n:hits=2 && sum ~ @go ~ wired DeadThing ~ 2026-08-17: получатель метода `func (d DeadThing) Method()` — второе упоминание в том же файле, поэтому вердикт мягче «единственного». Обе строки показаны, конструирования среди них нет
+# ── Android: половина подключения живёт в XML ───────────────────────────────
+# Найдено 2026-08-18 первым настоящим прогоном по ArxRemote: из девяти вердиктов
+# «единственное упоминание» пять оказались Application, Service и Receiver,
+# подключёнными через манифест. Маски были *.kt *.java *.kts — XML в них нет.
+# Ложное красное целым классом, на проекте, ради которого инструмент и писался.
+#
+# Одних масок мало: имя в манифесте стоит в кавычках, а кавычки разборщик
+# вычищает как строковый литерал. В XML кавычки — это не литерал, а значение
+# атрибута, то есть само подключение.
+
+wired-android-manifest ~ green ~ 0 ~ ALIVE && n:files=2 && n:code=2 && sum ~ @android ~ wired CompanionApplication ~ 2026-08-18: класс, подключённый только через AndroidManifest, обязан считаться живым
+wired-android-receiver ~ green ~ 0 ~ ALIVE && n:code=2 && sum ~ @android ~ wired StartupReceiver ~ 2026-08-18: то же для receiver — подключение стоит в атрибуте, а не в коде
+wired-xml-comment      ~ red   ~ 1 ~ A SINGLE MENTION && n:code=1 && n:text=1 ~ @android ~ wired GhostReceiver ~ 2026-08-18: имя, оставшееся только в XML-комментарии, использованием не является. Иначе починка масок обменяла бы один класс ошибок на другой
 wired-own-file-warns   ~ red   ~ 1 ~ the users are zero ~ @go ~ wired DeadThing ~ 2026-08-18: Д8 — «для приватного помощника это нормально» на мёртвом типе читается как оправдание. Различить объявление и вызов инструмент не может и не будет, но обязан сказать читателю, на что смотреть в показанных строках
 wired-self-only-go     ~ red   ~ 1 ~ ONLY INSIDE ITS OWN FILE && n:files=1 && n:code=1 && n:hits=2 ~ @go ~ wired LiveThing ~ 2026-08-17: бывший wired-live-go. При счёте файлов вызов в том же файле — третий исход, а не «жив»
 wired-strings-js       ~ red   ~ 1 ~ A SINGLE MENTION && n:code=1 && n:hits=1 && sum ~ @js ~ wired Ghost ~ 2026-08-17: строка, шаблон, хвостовой и блочный комментарий

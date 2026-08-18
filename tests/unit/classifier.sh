@@ -252,5 +252,31 @@ Zed lives inside the document
 END
 EOF
 
+# XML — единственное место, где значение в кавычках не литерал, а подключение.
+# `android:name=".Zed"` и есть проводка; вычищать здесь надо комментарии, и они
+# другие. Найдено первым настоящим прогоном по ArxRemote: пять классов из
+# девяти «мёртвых» оказались подключены через манифест.
+
+is 'xml: значение атрибута это код, а не литерал' m.xml Zed 'code=1' <<'EOF'
+<application android:name=".Zed" />
+EOF
+
+is 'xml: комментарий вычищается' m2.xml Zed 'text=1' <<'EOF'
+<!-- Zed was removed; this line is prose about it -->
+<application android:name=".Other" />
+EOF
+
+is 'xml: многострочный комментарий вычищается весь' m3.xml Zed 'text=1' <<'EOF'
+<!--
+  Zed lived here once
+-->
+<application android:name=".Other" />
+EOF
+
+is 'xml: код после закрытия комментария виден' m4.xml Zed 'code=1 text=1' <<'EOF'
+<!-- Zed mentioned in prose -->
+<receiver android:name=".Zed" />
+EOF
+
 [ "$fails" = 0 ] || { printf 'classifier: провалов %s\n' "$fails"; exit 1; }
 exit 0
