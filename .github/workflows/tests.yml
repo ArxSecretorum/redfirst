@@ -1,0 +1,35 @@
+# The suite, on a machine that has never seen this project.
+#
+# It exists because of a defect found on 2026-08-28: `.gitignore` swallowed the
+# `.redfirst/` directories inside the test fixtures. On the author's machine
+# those files were present and untracked, so the suite was green; in a fresh
+# clone they were absent and `removable` failed ten cases. A suite that is green
+# only where it was written is exactly what this tool argues against, and no
+# amount of care catches it — only a checkout that starts from nothing.
+#
+# dash is installed on purpose: it is /bin/sh on the target platform, and a bug
+# invisible in bash once killed `due` on every August date.
+
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dash
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq dash
+
+      - name: Suite
+        run: sh tests/run
+
+      # Breaks the tool on purpose at each known point and demands the suite
+      # notices. Without this a suite can be green because it checks nothing.
+      - name: Self-check
+        run: sh tests/run --self-check
