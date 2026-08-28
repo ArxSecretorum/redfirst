@@ -15,7 +15,7 @@ rm -f reached_end
 sh -c 'echo one; sleep 1; echo two; : > reached_end' 2>/dev/null | head -n 1 >/dev/null
 sleep 1
 if [ -f reached_end ]; then
-    echo "обрыв канала здесь не убивает писателя — SIGPIPE не воспроизвести"
+    echo "a broken pipe does not kill the writer here - SIGPIPE cannot be reproduced"
     rm -f reached_end
     exit 77
 fi

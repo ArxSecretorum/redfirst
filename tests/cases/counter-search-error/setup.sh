@@ -7,6 +7,6 @@ printf 'export function Any(){}\n' > src/a.js
 printf 'secret-value\n' > closed/hidden.js
 chmod 000 closed 2>/dev/null
 if ls closed >/dev/null 2>&1; then
-    echo "chmod 000 на каталоге не действует — ошибку поиска не воспроизвести"
+    echo "chmod 000 has no effect on a directory - the search error cannot be reproduced"
     exit 77
 fi

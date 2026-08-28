@@ -17,13 +17,13 @@ CASES="$HERE/cases"
 FIXTURES="$HERE/fixtures"
 UNIT="$HERE/unit"
 
-[ -f "$TOOL" ] || { echo "не найден $TOOL" >&2; exit 3; }
+[ -f "$TOOL" ] || { echo "not found: $TOOL" >&2; exit 3; }
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/rf-tests.XXXXXX") || exit 3
-# chmod перед удалением: случай на ошибку поиска снимает права с каталога, и
-# без этого `rm -rf` спотыкается о собственный стенд. На Pi после первого же
-# прогона оставался каталог с правами 000 — набор, который сорит в /tmp на
-# целевой машине, к доверию не располагает.
+# chmod before removal: the search-error case strips permissions off a
+# directory, and without it `rm -rf` trips over its own fixture. On the Pi a
+# directory with mode 000 survived the very first run — a suite that litters
+# /tmp on the target machine does not inspire trust.
 trap 'chmod -R u+rwX "$WORK" 2>/dev/null; rm -rf "$WORK"' EXIT INT TERM
 
 # Shells under test. dash is the target platform's /bin/sh; a bug invisible in
@@ -39,7 +39,7 @@ done
 fi
 case " $SHELLS " in
     *" dash "*) ;;
-    *) printf 'ПРЕДУПРЕЖДЕНИЕ: dash не установлен, переносимость не проверяется\n' >&2 ;;
+    *) printf 'WARNING: dash is not installed, portability is not checked\n' >&2 ;;
 esac
 
 blockers=0; noise=0; diffs=0; passed=0; total=0; known=0; fixed=0; skipped=0
@@ -60,7 +60,7 @@ prepare() {
     case "$spec" in
         -|'') : ;;
         @*)   src="$FIXTURES/${spec#@}"
-              [ -d "$src" ] || { echo "нет стенда $src" >&2; return 1; }
+              [ -d "$src" ] || { echo "no fixture $src" >&2; return 1; }
               cp -R "$src/." "$dest/" 2>/dev/null || return 1 ;;
         reg:*)
               mkdir -p "$dest/.redfirst"
@@ -72,12 +72,12 @@ prepare() {
               # VERIFY the fault took and say 77 itself; guessing by platform
               # name would be the same unchecked assumption the tool exists to
               # fight. The reason it prints becomes the report line.
-              [ -f "${spec#setup:}" ] || { echo "нет ${spec#setup:}" >&2; return 1; }
+              [ -f "${spec#setup:}" ] || { echo "no ${spec#setup:}" >&2; return 1; }
               ( cd "$dest" && sh "${spec#setup:}" ) > "$WORK/setup.out" 2>&1
               _prep=$?
               [ "$_prep" = 77 ] && return 77
               [ "$_prep" = 0 ] || return 1 ;;
-        *)    echo "неизвестный вид стенда: $spec" >&2; return 1 ;;
+        *)    echo "unknown fixture kind: $spec" >&2; return 1 ;;
     esac
 }
 
@@ -107,7 +107,7 @@ shared_box() {
 # The reason a skip happened is the first line the setup script printed.
 skip_reason() {
     _r=$(head -n 1 "$WORK/setup.out" 2>/dev/null)
-    [ -n "$_r" ] || _r='условие не воспроизводится на этой платформе'
+    [ -n "$_r" ] || _r='the precondition cannot be reproduced on this platform'
     printf 'SKIP %s' "$_r"
 }
 
@@ -117,14 +117,14 @@ run_one() {
         box=$(shared_box "$_fixture")
         _bc=$?
         [ "$_bc" = 77 ] && { skip_reason; return 1; }
-        [ "$_bc" = 0 ] || { printf 'стенд не собрался'; return 1; }
+        [ "$_bc" = 0 ] || { printf 'fixture did not build'; return 1; }
     else
         box="$WORK/box.$$"
         rm -rf "$box"; mkdir -p "$box"
         prepare "$_fixture" "$box"
         _bc=$?
         [ "$_bc" = 77 ] && { skip_reason; return 1; }
-        [ "$_bc" = 0 ] || { printf 'стенд не собрался'; return 1; }
+        [ "$_bc" = 0 ] || { printf 'fixture did not build'; return 1; }
     fi
 
     # Streams are captured separately. Merging them hid the single property the
@@ -135,7 +135,7 @@ run_one() {
     case "$_cmd" in
         NOARGS)
             ( cd "$box" && "$_sh" "$TOOL" ) >"$_o" 2>"$_e" ;;
-        # `@sh <код>` runs arbitrary shell in the box. The installer is not a
+        # `@sh <code>` runs arbitrary shell in the box. The installer is not a
         # subcommand, and idempotence can only be shown by running twice —
         # neither fits "arguments after redfirst".
         @sh\ *)
@@ -147,7 +147,7 @@ run_one() {
     rc=$?
 
     if [ "$_code" != "*" ] && [ "$rc" != "$_code" ]; then
-        printf 'код %s, ожидался %s' "$rc" "$_code"; return 1
+        printf 'code %s, expected %s' "$rc" "$_code"; return 1
     fi
     # Assertions are separated by `&&`. One report has to satisfy several claims
     # at once — a bucket number AND the arithmetic — and re-running the tool for
@@ -171,7 +171,7 @@ run_one() {
 # variable instead of on stdout, because reading a helper's result through
 # `$(…)` is itself a fork, and there are six fields per case line — the same
 # mistake, one level smaller. Every run parses every case even when ONLY selects
-# three of them, so this was paid on the self-check too: 25 с → 8 с.
+# three of them, so this was paid on the self-check too: 25 s → 8 s.
 _tv=""
 trim_set() {
     _tv=$1
@@ -179,8 +179,8 @@ trim_set() {
     while :; do case $_tv in *[\ \	]) _tv=${_tv%?} ;; *) break ;; esac; done
 }
 
-# $1 — имена полей через пробел, $2 — строка. Табличный случай и `expect`
-# каталожного различаются одним полем, и это единственное различие.
+# $1 — field names separated by spaces, $2 — the line. A table case and the
+# `expect` of a directory one differ by one field — the only difference.
 split_into() {
     _names=$1; _rest=$2
     for _name in $_names; do
@@ -195,7 +195,7 @@ split_into() {
 
 # ── numbers out of a wired report ────────────────────────────────────────────
 # The bucket breakdown IS the product: a count a non-reader can judge. Checking
-# it by substring let a report with "всего совпадений 4" and zero in every
+# it by substring let a report with "4 matches in total" and zero in every
 # bucket pass unnoticed — the arithmetic did not add up and nothing looked.
 # Keys are latin: they are the tool's own internal bucket names. The labels are
 # Russian because the report is.
@@ -230,7 +230,7 @@ check_needle() {
         sum)
             for _k in files code text; do
                 if ! report_num "$_k" "$_o_f"; then
-                    printf 'в отчёте нет корзины %s (начало вывода: %s)' "$_k" \
+                    printf 'no bucket %s in report (output starts: %s)' "$_k" \
                            "$(head -c 70 "$_o_f" 2>/dev/null | tr '\n' ' ')"
                     return 1
                 fi
@@ -238,36 +238,36 @@ check_needle() {
             done
             _s=$((_v_code + _v_text))
             if [ "$_s" != "$_v_files" ]; then
-                printf 'арифметика не сходится: файлов %s, по корзинам %s (%s+%s)' \
+                printf 'arithmetic does not add up: files %s, by bucket %s (%s+%s)' \
                        "$_v_files" "$_s" "$_v_code" "$_v_text"
                 return 1
             fi ;;
         n:*)
             _kv=${_n#n:}; _k=${_kv%%=*}; _want=${_kv#*=}
             if ! report_num "$_k" "$_o_f"; then
-                printf 'в отчёте нет корзины %s (начало вывода: %s)' "$_k" \
+                printf 'no bucket %s in report (output starts: %s)' "$_k" \
                        "$(head -c 70 "$_o_f" 2>/dev/null | tr '\n' ' ')"
                 return 1
             fi
             if [ "$_num" != "$_want" ]; then
-                printf 'корзина %s = %s, ожидалось %s' "$_k" "$_num" "$_want"; return 1
+                printf 'bucket %s = %s, expected %s' "$_k" "$_num" "$_want"; return 1
             fi ;;
         err:*)
             if ! grep -qF -- "${_n#err:}" "$_e_f" 2>/dev/null; then
-                printf 'нет «%s» в STDERR (там: %s)' "${_n#err:}" \
+                printf 'no "%s" in STDERR (there: %s)' "${_n#err:}" \
                        "$(head -c 60 "$_e_f" 2>/dev/null | tr '\n' ' ')"; return 1
             fi ;;
         out:*)
             if ! grep -qF -- "${_n#out:}" "$_o_f" 2>/dev/null; then
-                printf 'нет «%s» в STDOUT' "${_n#out:}"; return 1
+                printf 'no "%s" in STDOUT' "${_n#out:}"; return 1
             fi ;;
         !*)
             if grep -qF -- "${_n#!}" "$_o_f" "$_e_f" 2>/dev/null; then
-                printf 'нашлось запрещённое «%s»' "${_n#!}"; return 1
+                printf 'forbidden "%s" found' "${_n#!}"; return 1
             fi ;;
         *)
             if ! grep -qF -- "$_n" "$_o_f" "$_e_f" 2>/dev/null; then
-                printf 'нет строки «%s»' "$_n"; return 1
+                printf 'no line "%s"' "$_n"; return 1
             fi ;;
     esac
     return 0
@@ -306,7 +306,7 @@ tally() {
             if [ "$why" = "ok" ]; then
                 fixed=$((fixed + 1))
                 fixed_list="$fixed_list
-  $_id ($one): проходит — снимите пометку «$_dr?» в файле случая"
+  $_id ($one): passes — remove the "$_dr?" mark in the case file"
             else
                 known=$((known + 1))
                 known_list="$known_list
@@ -328,7 +328,7 @@ tally() {
         if [ "$why" != "$first" ]; then
             diffs=$((diffs + 1))
             diff_list="$diff_list
-  $_id: оболочки разошлись —$verdicts"
+  $_id: shells diverged —$verdicts"
         fi
     done
 }
@@ -357,7 +357,7 @@ run_dirs() {
         cdir=${case_dir%/}; cid=${cdir##*/}
         case "$cid" in ${ONLY:-*}) ;; *) continue ;; esac
         if [ ! -f "$cdir/setup.sh" ] || [ ! -f "$cdir/expect" ]; then
-            printf 'случай %s неполон: нужны setup.sh и expect\n' "$cid" >&2
+            printf 'case %s incomplete: need setup.sh and expect\n' "$cid" >&2
             continue
         fi
         eline=""
@@ -366,11 +366,11 @@ run_dirs() {
             eline=$l; break
         done < "$cdir/expect"
         if [ -z "$eline" ]; then
-            printf 'случай %s: expect пуст\n' "$cid" >&2; continue
+            printf 'case %s: expect is empty\n' "$cid" >&2; continue
         fi
         split_into 'dir code needle cmd' "$eline"
         if [ -z "$cmd" ]; then
-            printf 'случай %s: в expect нет команды\n' "$cid" >&2; continue
+            printf 'case %s: no command in expect\n' "$cid" >&2; continue
         fi
         tally "$cid" "$dir" "$code" "$needle" "setup:$cdir/setup.sh" "$cmd"
     done
@@ -398,7 +398,7 @@ run_unit() {
 # Breaks the tool on purpose and demands the suite notices. A suite that stays
 # green on a broken tool proves nothing.
 #
-# The list lives in a variable so that «шесть точек слома» in the documents can
+# The list lives in a variable so that "six break points" in the documents can
 # be counted from it instead of being retyped. A number nobody can compute is a
 # number nobody maintains — the whole premise of this tool, applied to its own
 # paperwork. Globbing is switched off while the variable is split: the patterns
@@ -419,7 +419,7 @@ break_count() {
 }
 
 self_check() {
-    note 'redfirst tests: самопроверка — ломаю инструмент и жду красного'
+    note 'redfirst tests: self-check — breaking the tool and expecting red'
     note ''
     bad=0
     _total_points=$(break_count)
@@ -427,48 +427,48 @@ self_check() {
     for pair in $BREAK_POINTS; do
         set +f
         point=${pair%%:*}; pattern=${pair#*:}
-        # `sh "$0"`, не `"$0"`: исполняемый бит не переживает авторство под
-        # Windows, из git всё приходит с правами 644, и на Linux прямой вызов
-        # даёт Permission denied. Самопроверка при этом рапортовала ПРОВАЛ по
-        # всем пяти точкам — механизм, ради которого набору вообще можно
-        # доверять, не работал на целевой платформе ни разу и обвинял в этом
-        # инструмент.
+        # `sh "$0"`, not `"$0"`: the executable bit does not survive authoring
+        # under Windows, everything comes out of git with mode 644, and on Linux
+        # a direct call gives Permission denied. The self-check meanwhile
+        # reported FAIL on all five points — the mechanism that makes the suite
+        # trustworthy at all had never once worked on the target platform, and
+        # it blamed the tool for that.
         out=$(REDFIRST_SELFTEST=1 REDFIRST_BREAK="$point" ONLY="$pattern" \
               SHELLS=dash sh "$0" --plain 2>&1)
         got=$(printf '%s' "$out" | sed -n 's/^BLOCKERS=//p')
         [ -n "$got" ] || got=0
         if [ "$got" -gt 0 ]; then
-            printf '  %-7s сломан → %s покраснели (%s блокеров)  ok\n' "$point" "$pattern" "$got"
+            printf '  %-7s broken → %s went red (%s blockers)  ok\n' "$point" "$pattern" "$got"
         else
-            printf '  %-7s сломан → %s ОСТАЛИСЬ ЗЕЛЁНЫМИ  ПРОВАЛ\n' "$point" "$pattern"
+            printf '  %-7s broken → %s STAYED GREEN  FAIL\n' "$point" "$pattern"
             bad=$((bad + 1))
         fi
     done
     note ''
     if [ "$bad" -gt 0 ]; then
-        note "Самопроверка провалена по $bad из $_total_points точек. Набору доверять нельзя."
+        note "Self-check failed on $bad of $_total_points points. The suite cannot be trusted."
         exit 3
     fi
-    note "Самопроверка пройдена: набор ловит поломку по каждой из $_total_points точек."
+    note "Self-check passed: the suite catches the break at each of $_total_points points."
     exit 0
 }
 
-# ── когда набор в последний раз проходил на каждой из машин ──────────────────
-# Полным набор не бывает ни на одной машине по отдельности: под Windows не
-# создаётся нечитаемый путь, под Linux — POSIX-эмуляция поверх Windows. Значит
-# вопрос «прогнали ли там, где остальное проверяется» задаётся при каждом
-# прогоне, и отвечать на него по памяти нельзя.
+# ── when the suite last passed on each machine ───────────────────────────────
+# The suite is never complete on any one machine alone: under Windows an
+# unreadable path cannot be created, under Linux — POSIX emulation over Windows.
+# So the question "was it run where the rest gets checked" is asked on every
+# run, and it must not be answered from memory.
 #
-# Долг Д7 просил встроить прогон на целевой машине в привычку и сам назвал
-# условие пересмотра: «если регрессия хоть раз проживёт там незамеченной».
-# 2026-08-17 это случилось дважды за ночь. Привычку программой не сделать, а
-# дату — можно: она видна в каждом прогоне и стареет на глазах.
+# Debt D7 asked to make a run on the target machine a habit and named the
+# condition for revisiting itself: "if a regression ever lives there unnoticed".
+# On 2026-08-17 that happened twice in one night. A habit cannot be programmed,
+# a date can: it shows in every run and ages before your eyes.
 LASTRUN="$HERE/last-run"
 
 record_run() {
-    # `uname -s` под Git Bash отдаёт MINGW64_NT-10.0-26200 — версия ядра в
-    # имени машины делает строку нечитаемой и меняется от обновления к
-    # обновлению, то есть запись расходилась бы сама с собой.
+    # `uname -s` under Git Bash gives MINGW64_NT-10.0-26200 — a kernel version
+    # in the machine name makes the line unreadable and changes from update to
+    # update, i.e. the record would disagree with itself.
     _plat=$(uname -s 2>/dev/null | sed 's/[-_].*//' || echo unknown)
     [ -n "$_plat" ] || _plat=unknown
     _tmpf="$LASTRUN.new.$$"
@@ -482,23 +482,23 @@ record_run() {
 show_runs() {
     note ''
     if [ ! -f "$LASTRUN" ]; then
-        note 'Чистого прогона не записано ни одного.'
+        note 'No clean run has been recorded at all.'
         return 0
     fi
-    note 'Последний прогон без поломок, по машинам:'
+    note 'Last run with nothing broken, by machine:'
     while IFS='	' read -r _d _p _n _s || [ -n "$_p" ]; do
         [ -n "$_p" ] || continue
-        printf '  %s  %-10s %s проверок, %s не выполнено\n' "$_d" "$_p" "$_n" "$_s"
+        printf '  %s  %-10s %s checks, %s not run\n' "$_d" "$_p" "$_n" "$_s"
     done < "$LASTRUN"
-    note 'Пропущенное на одной машине проверяется на другой — и только там.'
+    note 'What one machine skips is checked on another — and only there.'
     return 0
 }
 
-# ── счёт без прогона ─────────────────────────────────────────────────────────
-# Числа, которыми набор описан в README и в DEBTS.md, берутся отсюда, а не
-# перепечатываются руками. Считается теми же правилами, что и прогон, — иначе
-# получился бы второй счётчик, расходящийся с первым, и сверять пришлось бы уже
-# его. Случаи при этом не запускаются: режим стоит доли секунды.
+# ── counting without a run ───────────────────────────────────────────────────
+# The numbers describing the suite in README and DEBTS.md are taken from here,
+# not retyped by hand. Counted by the same rules as a run — otherwise there
+# would be a second counter diverging from the first, and it is that one you
+# would end up reconciling. Cases are not run: the mode costs a split second.
 count_only() {
     _t=0
     for file in "$CASES"/*.cases; do
@@ -550,46 +550,46 @@ if [ "${PLAIN:-0}" = "1" ]; then
 fi
 
 note ""
-note "redfirst tests: оболочки:$SHELLS"
+note "redfirst tests: shells:$SHELLS"
 note ""
-printf '  БЛОКЕРЫ (инструмент прозевал дефект)   %s\n' "$blockers"
-printf '  ШУМ (заругался зря)                    %s\n' "$noise"
-printf '  РАСХОЖДЕНИЯ ОБОЛОЧЕК                   %s\n' "$diffs"
-printf '  ИЗВЕСТНЫЕ ОТКРЫТЫЕ ДЕФЕКТЫ             %s\n' "$known"
-printf '  НЕ ПРОВЕРЕНО (условие не создалось)    %s\n' "$skipped"
-[ "$fixed" -gt 0 ] && printf '  ПОЧИНЕНО, пометка устарела             %s\n' "$fixed"
-printf '  пройдено                               %s из %s\n' "$passed" "$total"
-[ -n "$blocker_list" ] && { note ""; note "БЛОКЕРЫ:$blocker_list"; }
-[ -n "$noise_list" ]   && { note ""; note "ШУМ:$noise_list"; }
-[ -n "$diff_list" ]    && { note ""; note "РАСХОЖДЕНИЯ:$diff_list"; }
-[ -n "$known_list" ]   && { note ""; note "ОТКРЫТЫЕ ДЕФЕКТЫ (ожидаемо не проходят):$known_list"; }
-[ -n "$fixed_list" ]   && { note ""; note "ПОМЕТКА УСТАРЕЛА:$fixed_list"; }
-[ -n "$skip_list" ]    && { note ""; note "НЕ ПРОВЕРЕНО:$skip_list"; }
+printf '  BLOCKERS (the tool missed a defect)             %s\n' "$blockers"
+printf '  NOISE (complained for nothing)                  %s\n' "$noise"
+printf '  SHELL DIVERGENCES                               %s\n' "$diffs"
+printf '  KNOWN OPEN DEFECTS                              %s\n' "$known"
+printf '  NOT CHECKED (precondition could not be created) %s\n' "$skipped"
+[ "$fixed" -gt 0 ] && printf '  FIXED, the mark is stale                        %s\n' "$fixed"
+printf '  passed                                          %s of %s\n' "$passed" "$total"
+[ -n "$blocker_list" ] && { note ""; note "BLOCKERS:$blocker_list"; }
+[ -n "$noise_list" ]   && { note ""; note "NOISE:$noise_list"; }
+[ -n "$diff_list" ]    && { note ""; note "DIVERGENCES:$diff_list"; }
+[ -n "$known_list" ]   && { note ""; note "OPEN DEFECTS (expected to fail):$known_list"; }
+[ -n "$fixed_list" ]   && { note ""; note "STALE MARK:$fixed_list"; }
+[ -n "$skip_list" ]    && { note ""; note "NOT CHECKED:$skip_list"; }
 note ""
 
 [ "$fixed" -gt 0 ] && {
-    note 'Случай с пометкой «открыт» проходит. Пока пометка не снята, эта проверка'
-    note 'ничего не сторожит: она будет молчать и когда дефект вернётся.'
+    note 'A case marked "open" passes. Until the mark is removed, this check'
+    note 'guards nothing: it will stay silent when the defect comes back too.'
     exit 2
 }
 [ "$blockers" -gt 0 ] || [ "$diffs" -gt 0 ] && exit 2
 [ "$known" -gt 0 ] && {
-    note "Регрессий нет. Открытых дефектов: $known — они перечислены выше и ждут починки."
+    note "No regressions. Open defects: $known — listed above, waiting to be fixed."
     exit 1
 }
 [ "$noise" -gt 0 ] && exit 1
-# Дата записывается только у полного прогона: `ONLY` гоняет подмножество, и
-# запись о нём читалась бы как «здесь всё в порядке».
+# The date is recorded only for a full run: `ONLY` drives a subset, and a record
+# of it would read as "everything here is fine".
 [ -z "${ONLY:-}" ] && record_run
-# The word «Чисто» is not available when something did not run. Exit code
+# The word "Clean" is not available when something did not run. Exit code
 # answers "did anything break"; this line answers "was everything checked".
 # Same precedent as the missing-dash warning: an unavailable dimension is loud
 # and does not change the code.
 if [ "$skipped" -gt 0 ]; then
-    note "Ничего не сломано, но $skipped проверок не выполнено — они перечислены выше."
-    note "На этой платформе их условие не создаётся. Полным набор бывает только там, где создаётся."
+    note "Nothing is broken, but $skipped checks did not run — they are listed above."
+    note "Their precondition cannot be created on this platform. The suite is full only where it can."
     show_runs
     exit 0
 fi
-note "Чисто. Прогоните ещё $0 --self-check — набор без самопроверки ничего не доказывает."
+note "Clean. Now run $0 --self-check — a suite without a self-check proves nothing."
 exit 0

@@ -9,15 +9,15 @@
 # accumulates, anyone. Человек, ради которого команда написана, отличить их от
 # имён не может — он потому и спрашивает.
 if ! command -v git >/dev/null 2>&1; then
-    echo "git не установлен — базу сравнения не построить"
+    echo "git is not installed - no comparison base can be built"
     exit 77
 fi
 printf 'rootProject.name = "probe"\n' > settings.gradle.kts
 printf '// zzzgoneword described this in prose\nclass Base {\n    fun zzzGoneCall() = 1\n}\n' > Base.kt
-git init -q . >/dev/null 2>&1 || { echo "git init не отработал"; exit 77; }
+git init -q . >/dev/null 2>&1 || { echo "git init did not work"; exit 77; }
 git -c user.email=t@t -c user.name=t add -A >/dev/null 2>&1
 git -c user.email=t@t -c user.name=t commit -q -m base >/dev/null 2>&1 \
-    || { echo "базовый коммит не сделан"; exit 77; }
+    || { echo "the base commit was not made"; exit 77; }
 
 # Изменение. Появилось: настоящий символ в коде и слово, живущее только в прозе.
 # Исчезло: настоящий символ и слово, жившее только в комментарии базы.

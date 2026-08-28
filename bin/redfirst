@@ -92,9 +92,9 @@ bound() { printf '(^|[^[:alnum:]_])%s([^[:alnum:]_]|$)' "$1"; }
 
 # ── source discovery ─────────────────────────────────────────────────────────
 
-# Строки `!маска` — это исключения, а не имена файлов: их разбирает
-# exclude_patterns ниже. Здесь они отбрасываются, иначе `!legacy/` уехало бы
-# в find как имя файла и не нашло ничего.
+# `!mask` lines are exclusions, not file names: exclude_patterns below is what
+# reads them. They are dropped here, otherwise `!legacy/` would reach find as a
+# file name and match nothing.
 source_patterns() {
     if [ -f "$SOURCES" ]; then
         pats=$(grep -v '^[[:space:]]*#' "$SOURCES" 2>/dev/null \
@@ -151,16 +151,16 @@ is_noise() {
     esac
 }
 
-# Исключения владельца: строки `!маска` в файле масок. Встроенный список шума
-# знает про тесты, сборку и vendor, но не про БРОШЕННЫЙ код проекта — legacy/,
-# archive/, старую копию рядом с новой. Найдено 2026-08-28 на настоящем проекте:
-# `wired` объявил ALIVE для функции с нулём боевых вызовов, потому что в счёт
-# попали заброшенная копия и регрессионный тест. Про такие каталоги знает только
-# владелец, и сказать о них было нечем.
+# Owner exclusions: `!mask` lines in the mask file. The built-in noise list
+# knows about tests, build output and vendor, but not about a project's
+# ABANDONED code - legacy/, archive/, an old copy next to the new one. Found
+# 2026-08-28 on a real project: `wired` declared ALIVE a function with zero
+# production callers, because an abandoned copy and a regression test got into
+# the count. Only the owner knows such directories, and there was no way to say.
 #
-# `legacy/` — каталог на любой глубине; `*_pb2.py` или `tools/probe.py` — обычный
-# шаблон пути. Сопоставление через `case`, а не через glob: pathname expansion
-# в этом файле выключена (set -f), на сопоставление образцов это не влияет.
+# `legacy/` is a directory at any depth; `*_pb2.py` or `tools/probe.py` is an
+# ordinary path pattern. Matching goes through `case`, not glob: pathname
+# expansion is off in this file (set -f), which does not affect pattern matching.
 exclude_patterns() {
     [ -f "$SOURCES" ] || return 0
     grep '^[[:space:]]*!' "$SOURCES" 2>/dev/null \
@@ -180,8 +180,8 @@ _user_excluded() {
     return 1
 }
 
-# Сколько файлов выброшено масками владельца. Молча укоротить охват значит
-# соврать, что больше ничего не было, — тот же довод, что у `changed`.
+# How many files the owner's masks threw out. Silently shortening the scan is
+# lying that there was nothing else - the same argument as in `changed`.
 excluded_note() {
     [ -s "$TMP/excluded" ] || return 0
     printf '  excluded by your masks %s\n' "$(grep -c . < "$TMP/excluded")"
@@ -191,11 +191,11 @@ excluded_note() {
 list_sources() {
     [ -f "$TMP/files" ] && { cat "$TMP/files"; return; }
     : > "$TMP/files"; : > "$TMP/excluded"
-    # Каталоги сборки отсекаются в самом обходе, а не после него. На настоящем
-    # Android-проекте дерево — 19169 файлов, из них 17669 под build/, и каждая
-    # маска обходила их заново, чтобы is_noise потом всё это выбросил.
-    # Отсекается ровно то, что is_noise и так считает шумом: список вердиктов
-    # от этого не меняется, меняется только цена обхода.
+    # Build directories are cut off during the walk, not after it. On a real
+    # Android project the tree is 19169 files, 17669 of them under build/, and
+    # every mask walked them again only for is_noise to throw it all away.
+    # Exactly what is_noise already counts as noise is pruned: the list of
+    # verdicts does not change, only the price of the walk.
     source_patterns | while IFS= read -r pat; do
         [ -n "$pat" ] || continue
         find . -type d \( -name build -o -name .git -o -name .gradle \
@@ -214,7 +214,7 @@ list_sources() {
 }
 
 # A report produced from a subdirectory used to be indistinguishable from a
-# report over the whole project: same wording, smaller tree, and "один файл" for
+# report over the whole project: same wording, smaller tree, and "one file" for
 # a symbol whose only caller lives one level up. The scanned root is now stated
 # in every report, and a project marker above the current directory is called out.
 scanned_root_note() {
@@ -222,11 +222,11 @@ scanned_root_note() {
     printf 'Scanned from: %s\n' "$here"
     root=$(git rev-parse --show-toplevel 2>/dev/null || true)
     if [ -n "$root" ]; then
-        # Оба пути прогоняются через одну и ту же оболочку, а не сравниваются
-        # как есть. Под Git Bash `pwd` даёт /c/Users/…, а git — C:/Users/…, и
-        # дословное сравнение не совпадало НИКОГДА: предупреждение «корень выше»
-        # печаталось в самом корне, на каждом запуске. Найдено новой командой
-        # `changed` на первом же пробном прогоне.
+        # Both paths go through the same shell instead of being compared as
+        # they are. Under Git Bash `pwd` gives /c/Users/..., git gives
+        # C:/Users/..., and a literal comparison NEVER matched: the "root is
+        # higher up" warning printed in the root itself, on every run. Found by
+        # the new `changed` command on its very first trial run.
         root_real=$(cd "$root" 2>/dev/null && pwd -P) || root_real=""
         here_real=$(pwd -P)
         case "$here_real" in
@@ -287,7 +287,7 @@ grep_sources() {
 # `fun Foo` and failing on six other forms — a Java method with a return type,
 # a Java field with a type, a shell function, the NAME of a Go method, a TS
 # class member, a C function. All six reported a dead symbol as alive, and the
-# single line printed under "Вызывается:" was its own declaration.
+# single line printed under "Called from:" was its own declaration.
 #
 # The question changed instead of the parser: not "how many calls" but "in how
 # many files outside tests does this name appear in code". A declaration is
@@ -468,8 +468,8 @@ cmd_wired() {
 
     # The file list reaches awk as QUOTED positional parameters. It used to be
     # an unquoted `$(cat …)`: a path with a space split into two names that do
-    # not exist, awk read nothing at all, and the report printed "всего
-    # совпадений 4" with zero in every bucket, followed by a categorical
+    # not exist, awk read nothing at all, and the report printed "total
+    # matches 4" with zero in every bucket, followed by a categorical
     # verdict — arithmetic that does not add up, delivered with confidence.
     set --
     while IFS= read -r f; do set -- "$@" "$f"; done < "$TMP/hitfiles"
@@ -496,8 +496,8 @@ cmd_wired() {
     ncode=$(grep -c . < "$TMP/codefiles" || true)
     ntext=$(grep -c . < "$TMP/textfiles" || true)
     nhits=$(grep -c "^code	" "$TMP/cls" || true)
-    # Break point: shifts the one-file threshold, so every "мёртв" verdict must
-    # turn into "жив" and the suite must notice.
+    # Break point: shifts the one-file threshold, so every "dead" verdict must
+    # turn into "alive" and the suite must notice.
     _broken single && ncode=$((ncode + 1))
 
     printf 'redfirst wired "%s"\n' "$symbol"
@@ -546,8 +546,8 @@ cmd_wired() {
     fi
     printf 'ALIVE: the name occurs in code in %s files.\n' "$ncode"
     grep "^code	" "$TMP/cls" | cut -f3 | head -n 8 | sed 's/^/  /'
-    # Без существительного: «3 упоминания» и «5 упоминаний» — разные формы,
-    # а согласовывать числительное в shell дороже, чем оно стоит.
+    # No noun: "3 mentions" and "5 mentions" take different forms in Russian,
+    # and agreeing a numeral in shell costs more than it is worth.
     [ "$nhits" -gt 8 ] && printf '  … and %s more\n' "$((nhits - 8))"
     # Said here rather than only in the README, because "ALIVE" is exactly the
     # word a reader turns into "works" — and this tool's audience is the one
@@ -564,7 +564,7 @@ cmd_samples() {
     file_list_or_die
     # Validity is decided by grep's exit code, not by matching the wording of its
     # error message. 0.2.0 pattern-matched the text, missed it on this grep, and
-    # reported a broken expression as "0 совпадений" with a clean exit —
+    # reported a broken expression as "0 matches" with a clean exit -
     # a failed check presented as a passed one.
     set +e
     printf '' | grep -E -- "$pattern" >/dev/null 2>&1
@@ -600,7 +600,7 @@ cmd_counter() {
         [ -n "$term" ] || continue
         esc=$(esc_ere "$term")
         # Status is captured directly. Inside `if ! out=$(...)`, $? is the status
-        # of the negation — always 0 — so the whole "ОШИБКА ПОИСКА" branch below
+        # of the negation - always 0 - so the whole "SEARCH FAILED" branch below
         # was unreachable and a failed search silently confirmed absence.
         # Verified: `if ! out=$(sh -c "exit 2"); then echo $?; fi` prints 0.
         # -I is gone on purpose: a secret inside a binary fixture is still a secret.
@@ -636,28 +636,28 @@ cmd_counter() {
 }
 
 # ── changed ──────────────────────────────────────────────────────────────────
-# Каждая команда выше принимает имя, которое надо знать заранее. А человек,
-# который не читает код, узнаёт это имя от ассистента — от той самой стороны,
-# которую собирается проверить. Утверждение «почистил старый путь авторизации»
-# проверить нечем: имени в нём нет.
+# Every command above takes a name you have to know in advance. And the person
+# who does not read code learns that name from the assistant - from the very
+# side they are about to check. "I cleaned up the old authorisation path" cannot
+# be checked at all: there is no name in it.
 #
-# Эта команда достаёт кандидатов из самого изменения. Она НЕ разбирает синтаксис:
-# распознавание объявлений выброшено после того, как провалилось на шести формах
-# из семи, и возвращать его через заднюю дверь нельзя. Здесь только два вопроса,
-# на которые отвечает grep:
+# This command pulls candidates out of the change itself. It does NOT parse
+# syntax: recognising declarations was thrown away after failing on six forms
+# out of seven, and it must not come back through the back door. There are only
+# two questions here, and grep answers them:
 #
-#   ПОЯВИЛОСЬ — имя есть в добавленных строках и НЕТ во всей базе сравнения;
-#   ИСЧЕЗЛО   — имя есть в удалённых строках и НЕТ во всём текущем состоянии.
+#   APPEARED    - the name is in the added lines and NOT anywhere in the base;
+#   DISAPPEARED - the name is in the removed lines and NOT in the current state.
 #
-# Первое проверяется через `wired`: подключено ли то, что появилось. Второе —
-# через `counter`: не осталось ли ссылок на то, чего больше нет.
+# The first is checked with `wired`: is what appeared wired in. The second with
+# `counter`: are there references left to what is gone.
 #
-# Это кандидаты, а не вердикт, и так написано в выводе. Имена берутся из строк
-# целиком, включая строки и комментарии: отделять одно от другого — снова разбор
-# синтаксиса.
+# These are candidates, not a verdict, and the output says so. Names are taken
+# from whole lines, string literals and comments included: separating one from
+# the other is syntax parsing again.
 
 _CHANGED_MAX=200
-# Документы из подсчёта исключены: слово из прозы не делает вещь подключённой.
+# Docs are out of the count: a word in prose does not make a thing wired in.
 _CH_NOT_CODE='\.(md|mdx|txt|rst|html)$'
 _CHANGED_STOP='^(if|else|elif|then|fi|for|while|do|done|case|esac|switch|break|continue|return|function|func|class|struct|enum|interface|import|from|package|public|private|protected|internal|static|final|const|let|var|val|def|fun|new|this|self|null|nil|none|true|false|void|int|string|bool|float|double|char|byte|long|short|array|list|dict|map|set|type|typedef|extends|implements|override|abstract|throws|catch|try|finally|throw|raise|with|async|await|yield|lambda|print|printf|echo|test|assert|error|value|values|name|names|data|item|items|result|index|count|size|length|line|lines|file|files|path|paths|text|args|kwargs|param|params)$'
 
@@ -665,10 +665,10 @@ _is_source_path() {
     for _p in $(source_patterns); do
         case "$1" in $_p) return 0 ;; esac
     done
-    # Файл без расширения с shebang — это тоже исходник: `bin/redfirst`,
-    # `tests/run`, любой скрипт в bin/. Маски их не ловят по построению, и на
-    # первом же пробном запуске `changed` пропустил главный файл самого
-    # инструмента, отчитавшись «изменено файлов с кодом: 1».
+    # An extensionless file with a shebang is source too: `bin/redfirst`,
+    # `tests/run`, any script in bin/. Masks miss them by construction, and on
+    # its very first trial run `changed` skipped the main file of the tool
+    # itself, reporting "Changed files with code: 1".
     case "$1" in
         *.*) return 1 ;;
     esac
@@ -703,10 +703,10 @@ cmd_changed() {
         printf '%s\n' "$f" >> "$TMP/ch.srcfiles"
     done < "$TMP/ch.files"
 
-    # Неотслеживаемые файлы `git diff` не показывает вовсе, а «ассистент только
-    # что написал новый файл» — самый частый случай из всех. Найдено случаем
-    # changed-new-symbol на первом же прогоне: команда отвечала «изменений в
-    # коде нет» при двух новых файлах в дереве.
+    # `git diff` does not show untracked files at all, and "the assistant has
+    # just written a new file" is the most common case of all. Found by the
+    # changed-new-symbol case on its first run: the command answered "no changes
+    # in code" with two new files sitting in the tree.
     git ls-files --others --exclude-standard > "$TMP/ch.untracked" 2>/dev/null \
         || : > "$TMP/ch.untracked"
     : > "$TMP/ch.newfiles"
@@ -727,25 +727,25 @@ cmd_changed() {
     fi
     printf 'Changed files with code: %s (%s skipped)\n\n' "$nsrc" "$nskip"
 
-    # Кавыченные позиционные параметры, а не $(cat): путь с пробелом распадался
-    # на два несуществующих, и та же ошибка уже стоила `wired` целого вердикта.
+    # Quoted positional parameters, not $(cat): a path with a space fell apart
+    # into two that do not exist, and that bug already cost `wired` a verdict.
     git diff -U0 "$base" -- "$@" > "$TMP/ch.diff" 2>/dev/null || : > "$TMP/ch.diff"
     grep '^+' "$TMP/ch.diff" | grep -v '^+++' > "$TMP/ch.add" 2>/dev/null || : > "$TMP/ch.add"
     grep '^-' "$TMP/ch.diff" | grep -v '^---' > "$TMP/ch.del" 2>/dev/null || : > "$TMP/ch.del"
-    # Новый файл целиком — добавленные строки.
+    # A new file in its entirety is added lines.
     while IFS= read -r f; do
         [ -n "$f" ] || continue
         cat "$f" >> "$TMP/ch.add" 2>/dev/null || true
     done < "$TMP/ch.newfiles"
 
-    # Слова из КОДОВЫХ позиций изменённых файлов — тем же разборщиком, что и в
-    # `wired`. Оговорка Д1 звучала так: слово из комментария встречается дважды
-    # в двух файлах, переживает оба отсева и встаёт в список рядом с настоящим
-    # именем. На первом прогоне на живом коммите таких было больше половины.
+    # Words from CODE positions of the changed files - by the same classifier
+    # as in `wired`. Debt D1 read like this: a word from a comment occurs twice
+    # in two files, survives both filters and lands in the list next to a real
+    # name. On the first run over a live commit those were more than half.
     #
-    # Это НЕ возврат разбора синтаксиса: объявление по-прежнему не опознаётся.
-    # Вычищаются строки и комментарии — та часть, которая осталась после
-    # выброса `is_decl_re` именно потому, что работала.
+    # This is NOT syntax parsing coming back: a declaration is still not
+    # recognised. Strings and comments are stripped - the part that survived the
+    # removal of `is_decl_re` precisely because it worked.
     set --
     while IFS= read -r f; do
         [ -n "$f" ] || continue
@@ -755,9 +755,9 @@ cmd_changed() {
     RF_DQ='"' RF_SQ=$(printf '\47') RF_BT='`' \
     awk "$CLASSIFIER" "$@" 2>/dev/null > "$TMP/ch.codetext" || : > "$TMP/ch.codetext"
 
-    # То же самое для БАЗЫ сравнения: слово, пропавшее из комментария, — это не
-    # пропавшая вещь. Содержимое достаётся `git show`, расширение сохраняется в
-    # имени копии, а для файлов без расширения работает шебанг.
+    # The same for the comparison BASE: a word gone from a comment is not a
+    # thing gone. Content comes from `git show`, the extension is kept in the
+    # copy's name, and for extensionless files the shebang does the work.
     : > "$TMP/ch.baselist"
     _bi=0
     while IFS= read -r f; do
@@ -771,7 +771,7 @@ cmd_changed() {
         if git show "$base:$f" > "$_bf" 2>/dev/null; then
             printf '%s\n' "$_bf" >> "$TMP/ch.baselist"
         else
-            rm -f "$_bf"        # новый файл базы не имеет — это не ошибка
+            rm -f "$_bf"        # the base has no new file - that is not an error
         fi
     done < "$TMP/ch.srcfiles"
     : > "$TMP/ch.basetext"
@@ -786,7 +786,7 @@ cmd_changed() {
         awk "$CLASSIFIER" "$@" 2>/dev/null > "$TMP/ch.basetext" || : > "$TMP/ch.basetext"
     fi
 
-    _words() {   # файл -> отсортированный список слов
+    _words() {   # file -> sorted list of words
         tr -cs 'A-Za-z0-9_' '\n' < "$1" \
             | grep -E '^[A-Za-z_][A-Za-z0-9_]{3,}$' \
             | grep -Ev "$_CHANGED_STOP" \
@@ -797,9 +797,9 @@ cmd_changed() {
     _words "$TMP/ch.codetext" > "$TMP/ch.codew"
     _words "$TMP/ch.basetext" > "$TMP/ch.basew"
 
-    # Пустой разбор означает, что вычистка не отработала, а не что кода нет.
-    # Молча вычесть всё было бы худшим исходом из возможных: команда сказала бы
-    # «проверять нечего» ровно тогда, когда сама сломалась.
+    # An empty parse means the stripping did not work, not that there is no code.
+    # Silently subtracting everything would be the worst outcome available: the
+    # command would say "nothing to check" exactly when it broke itself.
     dropped_prose=0
     if [ -s "$TMP/ch.codew" ]; then
         comm -12 "$TMP/ch.addw" "$TMP/ch.codew" > "$TMP/ch.addw.code" 2>/dev/null \
@@ -827,31 +827,31 @@ cmd_changed() {
         head -n "$_CHANGED_MAX" "$TMP/ch.delw" > "$TMP/ch.delw.cap"; mv "$TMP/ch.delw.cap" "$TMP/ch.delw"
     fi
 
-    # Появилось = нет во всей базе сравнения. Исчезло = нет во всём текущем.
+    # Appeared = not in the comparison base. Gone = not in the current tree.
     #
-    # Плюс два отсева, без которых список бесполезен тому, ради кого написан.
-    # Первый прогон на настоящем коммите дал сорок три кандидата, из которых
-    # больше половины были английские слова из комментариев — «unverifiable»,
-    # «accumulates», «anyone».
+    # Plus two filters, without which the list is useless to the one it is for.
+    # The first run on a real commit gave forty-three candidates, more than half
+    # of them English words out of comments - "unverifiable", "accumulates",
+    # "anyone".
     #
-    #   * имя, встречающееся ОДИН раз во всём дереве, — это упоминание, а не
-    #     вещь: ровно тот же довод, по которому `wired` называет такое мёртвым;
-    #   * имя, разошедшееся по трём и более файлам, заведомо подключено, и
-    #     спрашивать про него `wired` незачем.
+    #   * a name occurring ONCE in the whole tree is a mention, not a thing:
+    #     exactly the argument by which `wired` calls such a name dead;
+    #   * a name spread over three files or more is wired in beyond doubt, and
+    #     there is no point asking `wired` about it.
     #
-    # Остаётся то, про что `wired` скажет что-то содержательное. Сколько отсеяно
-    # — печатается: молчаливое сокращение списка читалось бы как «больше ничего
-    # и не было».
+    # What is left is what `wired` will say something substantial about. How many
+    # were filtered out is printed: a silently shortened list would read as
+    # "there was nothing more anyway".
     : > "$TMP/ch.new"; : > "$TMP/ch.gone"
     dropped_once=0; dropped_spread=0
     while IFS= read -r w; do
         [ -n "$w" ] || continue
-        # Считаем по КОДУ, а не по документам. Первый прогон оставил в списке
-        # «unverifiable», «anyone», «accumulates»: они встречались дважды —
-        # один раз в комментарии и один раз в английском README. Проза не
-        # подключает ничего.
+        # Count by CODE, not by documents. The first run left "unverifiable",
+        # "anyone" and "accumulates" in the list: they occurred twice - once
+        # in a comment and once in an English README. Prose does not wire
+        # anything in.
         if git grep -l -F -e "$w" "$base" 2>/dev/null | grep -qvE "$_CH_NOT_CODE"; then
-            continue                       # уже было в коде базы — не новое
+            continue                       # already in the base code - not new
         fi
         _nf=$(git grep --untracked -l -F -e "$w" 2>/dev/null | grep -vE "$_CH_NOT_CODE" | grep -c . || true)
         _nh=$(git grep --untracked -F -e "$w" 2>/dev/null | grep -vE "^[^:]*\.(md|mdx|txt|rst|html):" | grep -c . || true)
@@ -935,7 +935,7 @@ _code_at() {
     if [ -n "$_st" ]; then printf '%s+dirty' "$_h"; else printf '%s' "$_h"; fi
 }
 
-_ledger_append() {   # дата, состояние, код, команда, утверждение, коммит
+_ledger_append() {   # date, state, code, command, claim, commit
     mkdir -p "$CONFIG_DIR"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "$6" >> "$LEDGER"
 }
@@ -949,11 +949,11 @@ _ledger_last_state() {
     _ledger_state=""
     [ -f "$LEDGER" ] || return 0
     while IFS='	' read -r _ld _ls _lc _lcmd _lclaim _lcommit || [ -n "$_lclaim" ]; do
-        # `if/fi`, не `&&`. Если последняя строка журнала не про это
-        # утверждение, `&&` оставляет статус 1: он становится статусом цикла,
-        # затем функции, и `set -e` убивает вызывающего. Поймано на живом
-        # запуске — `log` печатал журнал и выходил единицей, не сказав ни слова
-        # о том, что открыто.
+        # `if/fi`, not `&&`. If the last journal line is not about this
+        # claim, `&&` leaves status 1: it becomes the status of the loop,
+        # then of the function, and `set -e` kills the caller. Caught on a
+        # live run - `log` printed the journal and exited one, without a word
+        # about what was open.
         if [ "$_lclaim" = "$1" ]; then _ledger_state=$_ls; fi
     done < "$LEDGER"
     return 0
@@ -964,9 +964,9 @@ _open_claims() {
     cut -f5 "$LEDGER" | sort -u | while IFS= read -r c; do
         [ -n "$c" ] || continue
         _ledger_last_state "$c"
-        # `if/fi`, не `&&`: при закрытом утверждении `&&` оставляет статус 1,
-        # он становится статусом цикла, потом подстановки, и `set -e` убивает
-        # команду молча — журнал печатался и выходил единицей без единого слова.
+        # `if/fi`, not `&&`: on a closed claim `&&` leaves status 1, it becomes
+        # the status of the loop, then of the substitution, and `set -e` kills
+        # the command silently - the journal printed and exited one, wordlessly.
         if [ "$_ledger_state" = "red" ]; then printf '%s\n' "$c"; fi
     done
     return 0
@@ -1007,9 +1007,9 @@ _red_green() {
     fi
 
     _ledger_last_state "$claim"
-    # Точка слома: принимать зелёное без предшествующего красного. Это ровно
-    # то правило, ради которого инструмент назван, и набор обязан уметь
-    # заметить его пропажу.
+    # Break point: accept a green with no red before it. This is exactly the
+    # rule the tool is named after, and the suite must be able to notice it
+    # going missing.
     _broken redgreen && _ledger_state=red
     if [ "$_ledger_state" != "red" ]; then
         printf 'REFUSED: no red with this wording is in the journal.\n'
@@ -1124,27 +1124,27 @@ cmd_log() {
 }
 
 # ── removable ────────────────────────────────────────────────────────────────
-# `wired` говорит, что на имя не ссылаются. Безопасно ли его удалить, он не
-# говорит и не сможет: распознавание объявлений провалилось на шести формах из
-# семи и выброшено, а любой новый разборщик будет ошибаться так же уверенно.
+# `wired` says a name is not referenced. Whether it is safe to delete it, it
+# does not say and never will: declaration recognition failed on six forms out
+# of seven and was thrown out, and any new classifier will be wrong as boldly.
 #
-# Поэтому здесь не анализ, а эксперимент: отодвинуть файл, запустить сборку и
-# тесты, которые объявил сам проект, вернуть файл. Компилятор знает о ссылках
-# больше, чем узнает любая регулярка в этом файле.
+# So this is not analysis but an experiment: move the file aside, run the build
+# and the tests the project declared itself, put the file back. The compiler
+# knows more about references than any regex in this file ever will.
 #
-# Два свойства важнее вердикта:
-#   * инструмент НИКОГДА не удаляет. Файл переименовывается и переименовывается
-#     обратно; даже смерть машины посреди прогона оставляет содержимое на диске
-#     под очевидным именем;
-#   * возврат ПРОВЕРЯЕТСЯ контрольной суммой, а не предполагается.
+# Two properties matter more than the verdict:
+#   * the tool NEVER deletes. The file is renamed and renamed back; even the
+#     machine dying in the middle of a run leaves the content on disk under an
+#     obvious name;
+#   * the restore is VERIFIED by checksum, not assumed.
 #
-# И вердикт стоит ровно столько, сколько стоит оракул: молчание сборки в проекте
-# с рефлексией не доказывает почти ничего. Поэтому вес этого молчания считается
-# и печатается, а не оставляется на догадку читателю.
+# And the verdict is worth exactly what the oracle is worth: a silent build in a
+# project full of reflection proves almost nothing. So the weight of that silence
+# is counted and printed, not left for the reader to guess.
 
 BUILDCMD="$CONFIG_DIR/build"
-_rm_list=""       # список файлов через перевод строки
-_rm_sums=""       # "путь<TAB>сумма" на строку
+_rm_list=""       # newline-separated list of files
+_rm_sums=""       # "path<TAB>sum" per line
 
 _removable_restore() {
     [ -n "$_rm_list" ] || return 0
@@ -1165,9 +1165,9 @@ cmd_removable() {
     build=$(grep -v '^[[:space:]]*#' "$BUILDCMD" 2>/dev/null | grep -v '^[[:space:]]*$' | head -n 1)
     [ -n "$build" ] || die "no command to build with: $BUILDCMD holds only comments"
 
-    # Файлы принимаются пачкой, потому что вещь и её собственный тест уходят
-    # вместе. Поодиночке такая пара всегда красная, и это верный ответ на
-    # неверный вопрос: тест — не пользователь, он часть удаляемого.
+    # Files are taken in a batch because a thing and its own test go together.
+    # One at a time such a pair is always red, and that is a right answer to
+    # the wrong question: the test is not a user, it is part of what goes.
     for _t in "$@"; do
         [ -f "$_t" ] || die "not a file: $_t"
         [ -e "$_t.redfirst-removed" ] && die "$_t.redfirst-removed is already there - an earlier run did not finish. Move it back by hand"
@@ -1187,9 +1187,9 @@ $_t	$(cksum < "$_t")"
     scanned_root_note
     printf 'Build command: %s\n\n' "$build"
 
-    # Базовая линия. Без неё красное после переноса ничего не значит: проект мог
-    # не собираться и до опыта, и тогда вывод сделан из различия, созданного
-    # самим измерением.
+    # The baseline. Without it a red after the move means nothing: the project
+    # may have failed to build before the experiment too, and then the
+    # conclusion is drawn from a difference the measurement itself created.
     printf 'Baseline, nothing moved yet...\n'
     set +e
     ( eval "$build" ) > "$TMP/base.out" 2>&1
@@ -1233,8 +1233,8 @@ $_t	$(cksum < "$_t")"
     set -e
     _removable_restore
 
-    # Возврат не заявляется, а проверяется. Инструмент, который трогает чужие
-    # файлы, обязан доказывать, что положил их обратно.
+    # The restore is not claimed, it is checked. A tool that touches other
+    # people's files owes them proof that it put them back.
     _bad=0
     printf '%s\n' "$_rm_sums" | while IFS='	' read -r _f _s; do
         [ -n "$_f" ] || continue
@@ -1247,10 +1247,10 @@ $_t	$(cksum < "$_t")"
     done || _bad=1
     [ "$_bad" = 0 ] || exit 2
 
-    # Хвост вывода сборки бесполезен: у gradle там подвал про --stacktrace, а
-    # причина стоит выше. Показывается то, что похоже на ошибку, и только если
-    # похожего нет — последние строки. Инструмент не знает про gradle и знать
-    # не должен, поэтому образцы общие, а откат — честный.
+    # The tail of the build output is useless: gradle puts its --stacktrace
+    # footer there while the cause stands above. What looks like an error is
+    # shown, and only if nothing looks like one - the last lines. The tool does
+    # not know gradle and must not, so the patterns are generic, the fallback honest.
     printf 'Build exited %s.' "$rc"
     _errs=$(grep -inE '(^|[^a-z])(e:|error:|error |failed|unresolved|cannot find)' "$TMP/build.out" 2>/dev/null | head -n 6)
     if [ "$rc" != "0" ] && [ -n "$_errs" ]; then
@@ -1378,7 +1378,7 @@ cmd_due() {
         esac
         # Leading whitespace is stripped BEFORE the comment test. The glob
         # `[[:space:]]*\#*` reads as "one space, anything, a hash, anything",
-        # so " Ключ подписи #1 | never | 90" was silently dropped as a comment
+        # so " Signing key #1 | never | 90" was silently dropped as a comment
         # — an indented asset with a hash in its name vanished from the count.
         stripped=$line
         while :; do case $stripped in [[:space:]]*) stripped=${stripped#?} ;; *) break ;; esac; done

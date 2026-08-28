@@ -5,6 +5,6 @@ mkdir -p .redfirst
 printf 'Ключ | never | 30\n' > .redfirst/irreplaceable
 chmod 000 .redfirst/irreplaceable 2>/dev/null
 if cat .redfirst/irreplaceable >/dev/null 2>&1; then
-    echo "chmod 000 не действует в этой среде — нечитаемый файл не создать"
+    echo "chmod 000 has no effect in this environment - an unreadable file cannot be made"
     exit 77
 fi

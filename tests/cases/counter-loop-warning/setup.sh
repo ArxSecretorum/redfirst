@@ -10,10 +10,10 @@ printf '{}\n' > package.json
 printf 'export function Any(){}\n' > src/a.js
 ln -s .. sub/loop 2>/dev/null
 if [ ! -L sub/loop ]; then
-    echo "символические ссылки здесь не создаются — петлю не построить"
+    echo "symlinks cannot be created here - no loop to build"
     exit 77
 fi
 if ! grep -RnE zzzProbeTerm . 2>&1 >/dev/null | grep -q "recursive directory loop"; then
-    echo "grep не предупреждает о петле — ветку не воспроизвести"
+    echo "grep does not warn about the loop - this branch cannot be reproduced"
     exit 77
 fi

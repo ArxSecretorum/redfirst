@@ -14,7 +14,7 @@
 # cygpath: он есть в Git Bash, MSYS и Cygwin и больше нигде. На Linux условия
 # нет, и случай обязан сказать «не проверено», а не «в порядке».
 if ! command -v cygpath >/dev/null 2>&1; then
-    echo "cygpath отсутствует — среды с POSIX-эмуляцией поверх Windows здесь нет"
+    echo "cygpath is absent - no POSIX-emulation-over-Windows environment here"
     exit 77
 fi
 printf 'rootProject.name = "probe"\n' > settings.gradle.kts
