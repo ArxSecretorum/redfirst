@@ -8,9 +8,17 @@ MIT · no dependencies · nothing leaves your machine
 
 An assistant writes code ten times faster than a human. The practices that used
 to check that code did not keep up. The gap between what is written and what is
-verified got a name in 2026 — the **Verification Gap** — and numbers: a
-vulnerability is found in 45% of AI-generated samples, and 63% of developers
-spend more time debugging generated code than they would have spent writing it.
+verified got a name in 2026 — the **Verification Gap** — and numbers.
+
+Today's flagship models still leave a known vulnerability in [45% of the code
+they generate][veracode-spring]. Across 100+ models over four years the average
+security pass rate is [56%, and it has not moved][veracode-report]: two years of
+releases took it from ~55% to ~55%. Capability grew; verification did not. The
+reason is in how a model is built — it optimises for **plausibility**, not for
+correctness.
+
+[veracode-spring]: https://www.veracode.com/blog/spring-2026-genai-code-security/
+[veracode-report]: https://www.veracode.com/resources/analyst-reports/2026-genai-code-security-report/
 
 The core of the problem is simple and unpleasant: **the tests are written by the
 same author as the code.** If the assistant misunderstood the task, it will
@@ -293,11 +301,15 @@ misleading you.
 
 ## About security
 
-`redfirst` installs a session-start hook. In February 2026 an RCE was disclosed
-through Claude Code hooks, and in April a worm on PyPI planted a malicious
-`SessionStart` — merely opening a project executed the payload. We are asking
-for exactly the access you were recently attacked through, and we treat that
-accordingly:
+`redfirst` installs a session-start hook. That is the access chain attackers
+have been using: [RCE and API-key exfiltration through Claude Code hooks, MCP
+servers and env vars][cve] (Check Point, February 2026), a compromised PyPI
+package planting Claude Code hooks (April 2026), and [an npm worm doing the same
+across hundreds of packages][npm-worm] (August 2026). We are asking for exactly
+the access you were recently attacked through, and we treat that accordingly:
+
+[cve]: https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/
+[npm-worm]: https://thehackernews.com/2026/08/keyv-linked-npm-worm-poisons-hundreds.html
 
 <!-- redfirst-claim: one-file-runs-itself -->
 <!-- redfirst-claim: no-network -->
