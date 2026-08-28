@@ -408,6 +408,7 @@ noise:wired-only-in-test
 single:wired-dead-*
 quiet:due-quiet-*
 strings:wired-strings-js
+imports:wired-module-import-*
 redgreen:redgreen-green-needs-red'
 
 break_count() {

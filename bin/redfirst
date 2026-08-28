@@ -509,7 +509,29 @@ cmd_wired() {
     excluded_note
 
     if [ "$ncode" = "0" ]; then
-        printf 'THE NAME OCCURS NOWHERE IN CODE - only in strings, comments and imports:\n'
+        # Split found on 2026-08-28, on somebody else's Python project: `wired
+        # cli` called the module the whole package starts from dead. An import
+        # is kept out of the code bucket on purpose — an unused import is
+        # exactly how a dead symbol looks alive. But a MODULE name has nowhere
+        # else to stand: there the import line IS the use. One silence, two
+        # opposite meanings, and nothing in the strip pass can tell them apart.
+        #
+        # So the verdict is withdrawn rather than reversed. Saying "alive" would
+        # be the same error with the sign flipped, and the tool has an exit code
+        # for exactly this: 2 is "could not check", and it never means "fine".
+        nimp=$(grep -c "^imp	" "$TMP/cls" || true)
+        # Break point: empties the import bucket, and the withdrawn verdict goes
+        # back to being a hard "dead". The suite has to notice.
+        _broken imports && nimp=0
+        if [ "$nimp" != "0" ]; then
+            printf 'CANNOT JUDGE: outside comments and strings the name occurs only in imports.\n'
+            grep "^imp	" "$TMP/cls" | cut -f3 | head -n 5 | sed 's/^/  /'
+            printf 'An import is not counted as a use: an unused import is how a dead symbol\n'
+            printf 'looks alive. But a module name has nowhere else to stand - for it the import\n'
+            printf 'IS the use. Which of the two this is has to be read off the lines above.\n'
+            exit 2
+        fi
+        printf 'THE NAME OCCURS NOWHERE IN CODE - only in strings and comments:\n'
         grep -v "^code	" "$TMP/cls" | cut -f3 | head -n 5 | sed 's/^/  /'
         printf 'A mention is not a use. This thing is not in the running system.\n'
         exit 1
