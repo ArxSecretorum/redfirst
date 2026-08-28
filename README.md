@@ -210,6 +210,25 @@ A real case: 287 lines, six green tests, zero callers. For six weeks those tests
 counted as coverage in status reports. The gate was green — there was nothing
 for it to catch.
 
+The built-in noise list knows tests, build output and vendored code. It does not
+know the code **your** project has abandoned — `legacy/`, `archive/`, the old
+copy kept beside the new one. A line starting with `!` in `.redfirst/sources`
+excludes a path from the scan:
+
+```
+*.py
+!legacy/
+!archive/
+```
+
+`legacy/` is that directory at any depth; anything else is an ordinary path
+pattern (`*_pb2.py`, `tools/probe.py`). What the masks threw out is counted in
+the report — silently narrowing the scan would read as "there was nothing else".
+Found on a real project: `wired` answered ALIVE for a function with zero callers,
+because an abandoned copy and a regression test made up the count. The answer was
+formally true and practically false, which for this audience is the worst kind.
+`counter` is deliberately left alone — a claim of absence must search everything.
+
 ### `samples` — a number together with what it counted
 
 <!-- redfirst-output: Samples from the start, the middle and the end -->
@@ -302,9 +321,9 @@ auditable is the only honest basis of trust for a tool like this.
 
 ## The regression suite
 
-<!-- redfirst-count: cases=160 checks=334 -->
+<!-- redfirst-count: cases=162 checks=338 -->
 ```sh
-sh tests/run              # 160 cases across dash and bash — 334 checks
+sh tests/run              # 162 cases across dash and bash — 338 checks
 sh tests/run --self-check # breaks the tool on purpose, demands the suite notices
 ```
 
@@ -321,10 +340,10 @@ mark a suite carrying such cases is red forever and stops telling the known from
 a new regression. The mark is loud — the exit code is never 0 while one is open,
 and a marked case that **passes** exits 2 and demands the mark be removed.
 
-<!-- redfirst-count: checks=334 -->
+<!-- redfirst-count: checks=338 -->
 A case whose precondition cannot be created on this machine does not count as
 passed: it lands in a **NOT CHECKED** bucket, is named in the report, and the
-word "clean" becomes unavailable. Out of 334 checks, six are skipped on Windows
+word "clean" becomes unavailable. Out of 338 checks, six are skipped on Windows
 — `chmod 000` silently does nothing there, and neither an unreadable file nor a
 symlink can be made — and two are skipped on Linux, which has no Windows shell
 emulation for a hook to survive. Neither machine alone runs them all, and each
