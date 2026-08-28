@@ -107,6 +107,50 @@ and not to you, which is the arrangement this tool exists to replace.
 The check costs nothing. The hook runs before the model is called at all, so it
 answers even on an account with no credit left to reply with.
 
+## What it does not do
+
+It does not make code better. It does not catch logic errors in code that is
+wired in and covered by passing tests. It replaces neither review nor the QA
+services that test application behaviour — it answers a different question:
+**is what was written wired in, and is what was claimed confirmed.**
+
+And plainly: **one** check out of ten is executed automatically. Six refuse to
+accept a wrong answer, but you have to run them. Three are reminders in a text
+file, and the assistant may not follow them. A tool that promises more is
+misleading you.
+
+## About security
+
+`redfirst` installs a session-start hook. That is the access chain attackers
+have been using: [RCE and API-key exfiltration through Claude Code hooks, MCP
+servers and env vars][cve] (Check Point, February 2026), a compromised PyPI
+package planting Claude Code hooks (April 2026), and [an npm worm doing the same
+across hundreds of packages][npm-worm] (August 2026). We are asking for exactly
+the access you were recently attacked through, and we treat that accordingly:
+
+[cve]: https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/
+[npm-worm]: https://thehackernews.com/2026/08/keyv-linked-npm-worm-poisons-hundreds.html
+
+<!-- redfirst-claim: one-file-runs-itself -->
+<!-- redfirst-claim: no-network -->
+<!-- redfirst-claim: installer-keeps-your-settings -->
+<!-- redfirst-claim: registry-holds-no-paths -->
+
+- the only file that ever runs **by itself** is `bin/redfirst`, one file,
+  readable in one sitting. `install.sh` and `tests/run` are the other two
+  scripts in here and you start both of them yourself;
+- no network, no dependencies, no self-update;
+- the installer does not edit an existing `settings.json` automatically — it
+  prints what to add and leaves the decision to you;
+- the asset registry holds names and dates, never paths.
+
+Each of those four is checked by `tests/unit/claims.sh` rather than promised.
+The first one used to read "everything executable is one file", which was not
+true — three files carry the executable bit — and nothing could say so.
+
+Read `bin/redfirst` before installing. That is not a formality: short and
+auditable is the only honest basis of trust for a tool like this.
+
 ## Commands
 
 ### `changed` — where to start when nobody gave you a name
@@ -286,50 +330,6 @@ Run by the session-start hook. The point is the automatism: a risk written down
 in four documents over five days and acted on never is not a memory problem, it
 is a prioritisation problem. The asset list is stored **without paths**: a file
 titled "where my secrets live" is a map in its own right.
-
-## What it does not do
-
-It does not make code better. It does not catch logic errors in code that is
-wired in and covered by passing tests. It replaces neither review nor the QA
-services that test application behaviour — it answers a different question:
-**is what was written wired in, and is what was claimed confirmed.**
-
-And plainly: **one** check out of ten is executed automatically. Six refuse to
-accept a wrong answer, but you have to run them. Three are reminders in a text
-file, and the assistant may not follow them. A tool that promises more is
-misleading you.
-
-## About security
-
-`redfirst` installs a session-start hook. That is the access chain attackers
-have been using: [RCE and API-key exfiltration through Claude Code hooks, MCP
-servers and env vars][cve] (Check Point, February 2026), a compromised PyPI
-package planting Claude Code hooks (April 2026), and [an npm worm doing the same
-across hundreds of packages][npm-worm] (August 2026). We are asking for exactly
-the access you were recently attacked through, and we treat that accordingly:
-
-[cve]: https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/
-[npm-worm]: https://thehackernews.com/2026/08/keyv-linked-npm-worm-poisons-hundreds.html
-
-<!-- redfirst-claim: one-file-runs-itself -->
-<!-- redfirst-claim: no-network -->
-<!-- redfirst-claim: installer-keeps-your-settings -->
-<!-- redfirst-claim: registry-holds-no-paths -->
-
-- the only file that ever runs **by itself** is `bin/redfirst`, one file,
-  readable in one sitting. `install.sh` and `tests/run` are the other two
-  scripts in here and you start both of them yourself;
-- no network, no dependencies, no self-update;
-- the installer does not edit an existing `settings.json` automatically — it
-  prints what to add and leaves the decision to you;
-- the asset registry holds names and dates, never paths.
-
-Each of those four is checked by `tests/unit/claims.sh` rather than promised.
-The first one used to read "everything executable is one file", which was not
-true — three files carry the executable bit — and nothing could say so.
-
-Read `bin/redfirst` before installing. That is not a formality: short and
-auditable is the only honest basis of trust for a tool like this.
 
 ## The regression suite
 
