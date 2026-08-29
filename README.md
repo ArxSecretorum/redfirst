@@ -333,9 +333,9 @@ titled "where my secrets live" is a map in its own right.
 
 ## The regression suite
 
-<!-- redfirst-count: cases=167 checks=348 -->
+<!-- redfirst-count: cases=170 checks=354 -->
 ```sh
-sh tests/run              # 167 cases across dash and bash — 348 checks
+sh tests/run              # 170 cases across dash and bash — 354 checks
 sh tests/run --self-check # breaks the tool on purpose, demands the suite notices
 ```
 
@@ -352,10 +352,10 @@ mark a suite carrying such cases is red forever and stops telling the known from
 a new regression. The mark is loud — the exit code is never 0 while one is open,
 and a marked case that **passes** exits 2 and demands the mark be removed.
 
-<!-- redfirst-count: checks=348 -->
+<!-- redfirst-count: checks=354 -->
 A case whose precondition cannot be created on this machine does not count as
 passed: it lands in a **NOT CHECKED** bucket, is named in the report, and the
-word "clean" becomes unavailable. Out of 348 checks, six are skipped on Windows
+word "clean" becomes unavailable. Out of 354 checks, six are skipped on Windows
 — `chmod 000` silently does nothing there, and neither an unreadable file nor a
 symlink can be made — and two are skipped on Linux, which has no Windows shell
 emulation for a hook to survive. Neither machine alone runs them all, and each

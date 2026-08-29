@@ -335,6 +335,25 @@ CLASSIFIER='
                 # "key=${store.fingerprint()}" is a real call, and blanking it
                 # is how a live symbol was reported dead on real Kotlin: both
                 # of its call sites sat inside string templates.
+                # То же самое для f-строк Python: там скобки БЕЗ доллара.
+                # Найдено 29.08.2026 на tg-ws-proxy: `f"…/{DOC_ROOT}/…"`
+                # вычищался как обычный литерал, и символ, живший только в
+                # f-строках, объявлялся мёртвым — тот же класс ложного красного,
+                # что был на шаблонах Kotlin, и то же направление.
+                if (fstr && c == "{") {
+                    # `{{` в f-строке — экранированная скобка, а не вставка.
+                    if (substr(s, i + 1, 1) == "{") { i += 2; continue }
+                    d = 0; j = i
+                    while (j <= n) {
+                        cj = substr(s, j, 1)
+                        if (cj == "{") d++
+                        else if (cj == "}") { d--; if (d == 0) break }
+                        j++
+                    }
+                    out = out " " substr(s, i + 1, j - i - 1) " "
+                    i = j + 1
+                    continue
+                }
                 if (c == "$" && substr(s, i + 1, 1) == "{") {
                     d = 0; j = i + 1
                     while (j <= n) {
@@ -349,8 +368,8 @@ CLASSIFIER='
                 }
                 if (c == "\\") { i += 2; continue }
                 if (q == dq3 || q == sq3) {
-                    if (substr(s, i, 3) == q) { st = ""; q = ""; i += 3; continue }
-                } else if (c == q) { st = ""; q = ""; i++; continue }
+                    if (substr(s, i, 3) == q) { st = ""; q = ""; fstr = 0; i += 3; continue }
+                } else if (c == q) { st = ""; q = ""; fstr = 0; i++; continue }
                 i++
                 continue
             }
@@ -364,6 +383,16 @@ CLASSIFIER='
                 continue
             }
             c3 = substr(s, i, 3)
+            # Префикс читается ПЕРЕД кавычкой: f, F и любые их сочетания с r/b/u.
+            # Без этого пришлось бы считать кодом скобки в любой строке, и
+            # `"{ghost}"` в обычном литерале стал бы использованием.
+            if (c3 == dq3 || c3 == sq3 || c == dq || c == sq || c == bt) {
+                fstr = 0; p = i - 1
+                while (p >= 1 && substr(s, p, 1) ~ /[A-Za-z]/) {
+                    if (substr(s, p, 1) == "f" || substr(s, p, 1) == "F") fstr = 1
+                    p--
+                }
+            }
             if (c3 == dq3 || c3 == sq3) { st = "str"; q = c3; i += 3; continue }
             if (c == dq || c == sq || c == bt) { st = "str"; q = c; i++; continue }
             if (m == "//" && substr(s, i, 2) == "/*") { st = "blk"; i += 2; continue }
@@ -389,7 +418,7 @@ CLASSIFIER='
         return out
     }
     FNR == 1 {
-        st = ""; q = ""; hw = ""; m = marker(FILENAME); shf = isshell(FILENAME)
+        st = ""; q = ""; fstr = 0; hw = ""; m = marker(FILENAME); shf = isshell(FILENAME)
         xml = isxml(FILENAME); blkend = xml ? "-->" : "*/"
         # A file with no extension is not a mystery - its first line says what
         # it is. `bin/redfirst` and `tests/run` are exactly such files, and
@@ -412,7 +441,7 @@ CLASSIFIER='
             # Only a triple quote or a backtick spans lines. A single quote or
             # double quote left open at end of line is an apostrophe in prose,
             # not a string: carrying it over blanked the rest of the file.
-            if (st == "str" && q != dq3 && q != sq3 && q != bt) { st = ""; q = "" }
+            if (st == "str" && q != dq3 && q != sq3 && q != bt) { st = ""; q = ""; fstr = 0 }
             # Shell heredoc. Restricted to shell files because << is a shift
             # operator everywhere else.
             if (shf && st == "") {
