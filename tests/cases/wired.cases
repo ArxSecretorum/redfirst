@@ -73,3 +73,19 @@ wired-exclude-reported ~ red   ~ 1 ~ excluded by your masks ~ @exclude ~ wired G
 wired-module-import-nojudge ~ red ~ 2 ~ CANNOT JUDGE && n:files=1 && n:code=0 && n:text=1 && sum ~ @pymodule ~ wired engine ~ 2026-08-28: модуль, импортированный и вызванный из соседнего файла, вердикт «мёртв» получать не вправе
 wired-import-line-shown     ~ red ~ 2 ~ pkg/app.py ~ @pymodule ~ wired engine ~ 2026-08-28: снятый вердикт обязан показать те самые строки импорта — иначе читателю нечего перепроверять
 wired-text-still-dead       ~ red ~ 1 ~ not in the running system ~ @pymodule ~ wired Ghostly ~ 2026-08-28: имя, живущее только в комментарии и строке, обязано сохранить твёрдый вердикт — иначе починка обменяла один класс ошибок на другой
+# ── та же болезнь в ветке «один файл» ───────────────────────────────────────
+# Найдено 29.08.2026 прогоном по newsbot: `wired collector_sources` ответил
+# «A SINGLE MENTION in the whole project» и тремя строками ниже сам же напечатал
+# «Also mentioned outside code: ./v2/shadow_runner.py:21:from collector_sources
+# import fetch_all_candidates». Вывод противоречил себе в пределах экрана.
+#
+# Причина та же: единственное упоминание в коде оказалось вызовом из tools/, а
+# импорт из боевого модуля в счёт не идёт. Для символа так и надо, для имени
+# модуля импорт и есть подключение. Значит и здесь вердикт снимается: код 2.
+#
+# Условие узкое — импорт в ДРУГОМ файле, не в том единственном, где есть код.
+# Иначе снялись бы честные вердикты про мёртвый символ, который сам себя
+# импортирует, а их проверяют wired-self-only-python и wired-dead-go-receiver.
+
+wired-module-onefile-nojudge ~ red ~ 2 ~ CANNOT JUDGE && n:files=2 && n:code=1 && n:text=1 && sum ~ @pymodule ~ wired radio ~ 2026-08-29: имя модуля, вызванное из одного файла и импортированное в другом, «единственным упоминанием» не является
+wired-onefile-shows-import   ~ red ~ 2 ~ pkg/app.py ~ @pymodule ~ wired radio ~ 2026-08-29: снятый вердикт обязан показать импорт из другого файла — он и есть то, чего не хватило прибору

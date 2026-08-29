@@ -537,6 +537,38 @@ cmd_wired() {
         exit 1
     fi
     if [ "$ncode" = "1" ]; then
+        # The same ambiguity as the branch above, one step along. Found on
+        # 2026-08-29 on a live project: `wired collector_sources` printed "A
+        # SINGLE MENTION in the whole project" and three lines later printed the
+        # import of that very name from a production module. The report
+        # contradicted itself inside one screen.
+        #
+        # The single code mention was a call from a test harness; the import that
+        # actually wires the module in does not count as code, on purpose. For a
+        # symbol that is right. For a module name the import IS the wiring, so
+        # the verdict is withdrawn here too rather than reversed.
+        #
+        # The condition is narrow: an import in a file OTHER than the one file
+        # that has the code. Without that restriction the honest verdicts about a
+        # dead symbol importing itself would be withdrawn as well, and those are
+        # what wired-self-only-python and wired-dead-go-receiver check.
+        grep "^imp	" "$TMP/cls" 2>/dev/null | cut -f2 | sort -u > "$TMP/impfiles"
+        nimp_other=$(comm -23 "$TMP/impfiles" "$TMP/codefiles" | grep -c . || true)
+        # Break point: same one as the branch above - both paths lose the import
+        # bucket at once, and the suite has to notice in both.
+        _broken imports && nimp_other=0
+        if [ "$nimp_other" != "0" ]; then
+            printf 'CANNOT JUDGE: the only mention in code sits in one file, and other files import the name.\n'
+            grep "^code	" "$TMP/cls" | cut -f3 | head -n 3 | sed 's/^/  /'
+            comm -23 "$TMP/impfiles" "$TMP/codefiles" > "$TMP/impother"
+            while IFS= read -r _f; do
+                grep "^imp	$_f	" "$TMP/cls" | cut -f3 | head -n 2 | sed 's/^/  /'
+            done < "$TMP/impother" | head -n 5
+            printf 'An import is not counted as a use: an unused import is how a dead symbol\n'
+            printf 'looks alive. But a module name has nowhere else to stand - for it the import\n'
+            printf 'IS the wiring. Which of the two this is has to be read off the lines above.\n'
+            exit 2
+        fi
         # One file, one mention: nothing names this, including itself. One file,
         # several mentions: it is used, but only by its own file. The two need
         # different words — a private helper is normal, a service nobody outside
